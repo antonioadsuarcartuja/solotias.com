@@ -33,7 +33,7 @@ $limit       = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 // Sanitización mínima
 $page  = max(1, $page);
 $limit = min(50, max(1, $limit)); // evita abusos
-$service = in_array($service, ['webs', 'videollamadas'], true) ? $service : 'webs';
+$service = in_array($service, ['webs', 'videocalls'], true) ? $service : 'webs';
 $gender  = in_array($gender,  ['female', 'male'], true) ? $gender : 'female';
 
 // Construye payload POST (Parse Cloud Functions suelen ir por POST con JSON)

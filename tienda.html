@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Tienda | Llamametu</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="color-scheme" content="light" />
+  <meta name="format-detection" content="telephone=no" />
+
+
+  <link rel="manifest" href="manifest.json" />
+
+  <!-- Estilos específicos de tienda -->
+  <link rel="stylesheet" href="tienda/tienda.css" />
+</head>
+
+<body>
+	<!-- Overlay orientación (solo móvil/PWA) -->
+<div id="rotateOverlayTienda" class="rotate-overlay" aria-hidden="true">
+  <div class="rotate-box">
+    <div class="rotate-title">Solo en vertical</div>
+    <div class="rotate-text">
+      La tienda solo se puede usar en modo vertical. Gira tu móvil a modo retrato para continuar.
+    </div>
+  </div>
+</div>
+
+  <!-- Cabecera fija -->
+  <header class="header">
+    <div class="brand">
+      <div class="shop-title">Tienda</div>
+    </div>
+    <button class="btn btn-secondary" id="btnBack" type="button">Volver</button>
+  </header>
+
+  <main class="page" id="page">
+    <section class="shop-section">
+      <div class="shop-h2">1. Elige tu pack</div>
+
+      <div id="packsGrid" class="shop-grid" aria-live="polite">
+        <!-- Skeleton mientras carga -->
+        <div class="skeleton"><div class="shimmer"></div></div>
+        <div class="skeleton"><div class="shimmer"></div></div>
+        <div class="skeleton"><div class="shimmer"></div></div>
+        <div class="skeleton"><div class="shimmer"></div></div>
+      </div>
+
+      <div class="card shop-chosen" id="chosenBox" style="display:none;">
+        <div class="muted">Ha elegido: <b id="chosenName"></b> <span id="chosenDesc"></span></div>
+      </div>
+
+      <div class="shop-h2">2. Elige una forma de pago</div>
+
+      <div class="acc" id="accordion">
+        <!-- Tarjeta -->
+        <div class="acc-item" data-key="card" data-open="false">
+          <button class="acc-btn" type="button">
+            <div class="acc-left">
+              <span class="acc-icon">
+				  <img src="tienda/icons/tarjeta.svg" alt="Tarjeta">
+				</span>
+
+              <div class="acc-title">Tarjeta</div>
+            </div>
+            <div class="acc-chevron" aria-hidden="true">⌄</div>
+          </button>
+
+          <div class="acc-panel">
+            <div class="muted">Indica el teléfono donde se recargándomelas los minutos.</div>
+
+            <div class="form-row">
+              <div class="label">Teléfono</div>
+              <input class="input" inputmode="numeric" pattern="[0-9]*" placeholder="Indica aquí tu teléfono" />
+            </div>
+
+            <div class="form-row">
+              <div class="label">Titular de la tarjeta</div>
+              <input class="input" type="text" placeholder="Nombre completo del titular" />
+            </div>
+
+            <div class="form-row">
+              <div class="label">Número de tarjeta</div>
+              <input class="input" inputmode="numeric" placeholder="Número de tarjeta" />
+            </div>
+
+            <div class="form-row">
+              <div class="label">Caducidad</div>
+              <div class="two-cols">
+                <select class="select" id="expMonth">
+                  <option value="" selected>Mes</option>
+                  <option value="01">01 Enero</option>
+                  <option value="02">02 Febrero</option>
+                  <option value="03">03 Marzo</option>
+                  <option value="04">04 Abril</option>
+                  <option value="05">05 Mayo</option>
+                  <option value="06">06 Junio</option>
+                  <option value="07">07 Julio</option>
+                  <option value="08">08 Agosto</option>
+                  <option value="09">09 Septiembre</option>
+                  <option value="10">10 Octubre</option>
+                  <option value="11">11 Noviembre</option>
+                  <option value="12">12 Diciembre</option>
+                </select>
+
+                <select class="select" id="expYear">
+                  <option value="" selected>Año</option>
+                  <!-- se rellena por JS -->
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="label">CVC</div>
+              <input class="input" inputmode="numeric" placeholder="CVC" />
+            </div>
+
+            <button class="btn btn-primary pay-btn" type="button" id="payCardBtn">
+              Realizar Pago
+            </button>
+			  <div id="payStatus" class="pay-status" aria-live="polite" style="display:none;"></div>
+          </div>
+        </div>
+
+        <!-- PayPal -->
+        <div class="acc-item" data-key="paypal" data-open="false">
+          <button class="acc-btn" type="button">
+            <div class="acc-left">
+              <span class="acc-icon">
+				  <img src="tienda/icons/paypal.svg" alt="PayPal">
+				</span>
+
+              <div class="acc-title">PayPal</div>
+            </div>
+            <div class="acc-chevron" aria-hidden="true">⌄</div>
+          </button>
+
+          <div class="acc-panel">
+            <div class="muted">Indica el teléfono donde se recargándomelas los minutos.</div>
+
+            <div class="form-row">
+              <div class="label">Teléfono</div>
+              <input class="input" inputmode="numeric" pattern="[0-9]*" placeholder="Indica aquí tu teléfono" />
+            </div>
+
+            <div class="form-row">
+              <div class="muted">Tras pulsar Pagar con PayPal serás redirigido a la plataforma de pago oficial de PayPal.</div>
+            </div>
+
+            <button class="btn btn-primary pay-btn" type="button" id="payPaypalBtn">
+              Pagar con PayPal
+            </button>
+			  
+			  <!-- PayPal form (auto-submit) -->
+				<form action="https://www.paypal.com/cgi-bin/webscr" method="post" id="paypal_form" style="display:none;">
+				  <input type="hidden" name="cmd" value="_ext-enter">
+				  <input type="hidden" name="redirect_cmd" value="_xclick">
+				  <input type="hidden" name="quantity" value="1">
+				  <input type="hidden" name="currency_code" value="EUR">
+				  <input type="hidden" name="bn" value="PP-BuyNowBF:btn_buynowCC_LG.gif:NonHostedGuest">
+
+				  <input type="hidden" name="business" value="">
+				  <input type="hidden" name="item_name" value="">
+				  <input type="hidden" name="item_number" value="">
+				  <input type="hidden" name="amount" value="">
+
+				  <input type="hidden" name="return" value="https://amigasentuciudad.com/paypal-return">
+				  <input type="hidden" name="notify_url" value="https://lenap1.llamametu.com/api/respuesta-paypal">
+				  <input type="hidden" name="cancel_return" value="https://amigasentuciudad.com/tienda.html">
+				</form>
+
+				<!-- Estado PayPal (debajo del botón) -->
+				<div id="paypalStatus" class="pay-status" aria-live="polite" style="display:none;"></div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Caja informativa -->
+      <div class="card info-card">
+        <div class="info-row">
+          <div class="info-icon">
+		  <img src="tienda/icons/sin-pagos.svg" alt="Sin pagos automáticos">
+		</div>
+
+          <div>
+            <p class="info-title">Sin pagos automáticos</p>
+            <p class="info-text">Utilizamos el protocolo ssl que protege el anonimato y datos personales de nuestros clientes.</p>
+          </div>
+        </div>
+
+        <div class="info-row" style="margin-bottom:0;">
+         <div class="info-icon">
+		  <img src="tienda/icons/pagos seguros.svg" alt="Pagos seguros">
+		</div>
+
+          <div>
+            <p class="info-title">Pagos seguros</p>
+            <p class="info-text">Nuestra plataforma de pago Userphone utiliza el protocolo de seguridad SSL, PROTEGIENDO el anonimato y datos personales de todos nuestros clientes.</p>
+          </div>
+        </div>
+
+        <div class="contact">
+          ¿Tienes dudas con el sistema de pago?<br>
+          Para incidencias relacionadas con pagos&nbsp; <b>hola@llamametu.com</b> &nbsp;/&nbsp; <b>919 991 321</b> de lunes a viernes en horario de 9:00 a 17:00
+        </div>
+      </div>
+
+      <div id="warnBox" class="warn" style="display:none;"></div>
+    </section>
+  </main>
+
+  <!-- JS específico de tienda -->
+  <script src="tienda/tienda.js"></script>
+</body>
+</html>
+

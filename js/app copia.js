@@ -511,7 +511,7 @@ async function reloadAdsWithService(service) {
 
   currentService = String(service || DEFAULT_SERVICE).toLowerCase();
   console.log("SERVICE ACTUAL:", currentService); // 👈 PONLO AQUÍ
-  // mantenemos compatibilidad interna: normalizeService convierte videocalls->videocalls (UI)
+  // mantenemos compatibilidad interna: normalizeService convierte videocalls->videollamadas (UI)
   // pero aquí enviamos EXACTO lo que el backend espera.
   if (currentService !== "webs" && currentService !== "videocalls") {
     currentService = DEFAULT_SERVICE;
@@ -581,13 +581,13 @@ function getPrincipalPhoto(ad) {
 
 function normalizeService(service) {
   const s = String(service || DEFAULT_SERVICE).toLowerCase();
-  return (s === "videocalls" || s === "videocalls" || s === "video") ? "videocalls" : "webs";
+  return (s === "videollamadas" || s === "videocalls" || s === "video") ? "videollamadas" : "webs";
 }
 
 function availabilityText(ad) {
   const service = normalizeService(ad?.service);
   if (ad?.available) {
-    return service === "videocalls"
+    return service === "videollamadas"
       ? "Estoy disponible, Videollámame"
       : "Estoy disponible, Llámame";
   }
@@ -595,7 +595,7 @@ function availabilityText(ad) {
 }
 
 function ctaText(service) {
-  return normalizeService(service) === "videocalls" ? "Videollamada" : "Llámame";
+  return normalizeService(service) === "videollamadas" ? "Videollamada" : "Llámame";
 }
 
 function buildPhoneIconSvg() {
@@ -772,12 +772,12 @@ function createCardElFromAd(ad) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "call-btn " + (ad?.available ? "is-available" : "is-unavailable");
-  btn.setAttribute("aria-label", normalizeService(ad?.service) === "videocalls" ? "Videollamada" : "Llamar");
+  btn.setAttribute("aria-label", normalizeService(ad?.service) === "videollamadas" ? "Videollamada" : "Llamar");
   if (!ad?.available) {
     btn.setAttribute("aria-disabled", "true");
   }
 
-  const isVideoCall = normalizeService(ad?.service) === "videocalls";
+  const isVideoCall = normalizeService(ad?.service) === "videollamadas";
 btn.dataset.callMode = isVideoCall ? "video" : "voice";
 btn.innerHTML = `
   <span aria-hidden="true" class="call-ico">${isVideoCall ? buildVideoIconSvg() : buildPhoneIconSvg()}</span>
@@ -1093,47 +1093,47 @@ function populateProfilePanel(ad) {
     blocks[3].textContent = ad.seo_text || "";
   }
 
-// ===============================
-// CTA block final
-// ===============================
-const ctaTitle = document.querySelector(".profile-cta-title");
-const ctaBtn = document.querySelector(".profile-cta .call-btn");
-const ctaBtnText = document.querySelector(".profile-cta .call-text");
-const ctaIco = document.querySelector(".profile-cta .call-ico");
+  // ===============================
+  // CTA block final
+  // ===============================
+  const ctaTitle = document.querySelector(".profile-cta-title");
+  const ctaBtn = document.querySelector(".profile-cta .call-green-btn");
+  const ctaBtnText = document.querySelector(".profile-cta .call-green-text");
+  const ctaIco = document.querySelector(".profile-cta .call-green-ico");
 
-const service = normalizeService(ad.service);
-const available = !!ad.available;
+  const service = normalizeService(ad.service);
+  const available = !!ad.available;
 
-if (ctaBtnText) {
-  ctaBtnText.textContent = (service === "videocalls") ? "Videollamada" : "Llamar";
-}
-
-if (ctaIco) {
-  ctaIco.innerHTML = (service === "videocalls") ? buildVideoIconSvg() : buildPhoneIconSvg();
-}
-
-if (ctaBtn) {
-  ctaBtn.setAttribute("aria-label", (service === "videocalls") ? "Videollamada" : "Llamar");
-
-  if (available) {
-    ctaBtn.classList.remove("is-unavailable");
-    ctaBtn.setAttribute("aria-disabled", "false");
-  } else {
-    ctaBtn.classList.add("is-unavailable");
-    ctaBtn.setAttribute("aria-disabled", "true");
+  if (ctaTitle) {
+    if (available && service === "webs") {
+      ctaTitle.textContent = `Llama a ${ad.name}, ahora está disponible`;
+    } else if (available && service === "videollamadas") {
+      ctaTitle.textContent = `Videollamada a ${ad.name}, ahora está disponible`;
+    } else {
+      ctaTitle.textContent = `${ad.name} no está disponible, inténtalo más tarde`;
+    }
   }
-}
 
-if (ctaTitle) {
-  if (available) {
-    ctaTitle.textContent =
-      (service === "videocalls")
-        ? "Videollama a esta TIA que está disponible ahora"
-        : "Llama a esta TIA que está disponible ahora";
-  } else {
-    ctaTitle.textContent = "Ahora mismo no está disponible, inténtalo más tarde";
+  if (ctaBtn) {
+    ctaBtn.classList.toggle("call-red-btn", !available);
+    ctaBtn.classList.toggle("call-green-btn", available);
+
+    if (!available) {
+      ctaBtn.setAttribute("aria-disabled", "true");
+    } else {
+      ctaBtn.removeAttribute("aria-disabled");
+    }
   }
-}
+
+  if (ctaBtnText) {
+    ctaBtnText.textContent = service === "videollamadas" ? "Videollamar" : "Llamar";
+  }
+
+  if (ctaIco) {
+    ctaIco.innerHTML = service === "videollamadas"
+      ? buildVideoIconSvg()
+      : buildPhoneIconSvg();
+  }
 }
 
 
@@ -1403,8 +1403,6 @@ function openPanelFromCard(card) {
   if (!mediaEl) return;
 
   // Abrimos panel inmediato y sin transición del sheet (evita menguar)
-  panel.hidden = false;
-  panel.removeAttribute("hidden");
   panel.classList.remove("hidden");
   panel.style.setProperty("--panelBackAlpha", "0");
 
@@ -1982,8 +1980,6 @@ function openMediaViewer(type, src) {
   document.body.classList.add("viewer-open");
 
   // 5) Mostrar visor
-  mediaViewer.hidden = false;
-  mediaViewer.removeAttribute("hidden");
   mediaViewer.classList.remove("hidden");
   mediaViewer.setAttribute("aria-hidden", "false");
 }
@@ -2276,16 +2272,7 @@ function configureCallModal(mode) {
     }
 
   }
-  	function close() {
-		overlay.classList.remove("is-open");
-		setTimeout(() => {
-			overlay.hidden = true;
-			lastFocus?.focus?.();
-		}, 200);
-		unlockScroll();
-	}
-
-async function openFromCard(card) {
+function openFromCard(card) {
 	lastFocus = document.activeElement;
 
 	const nameRaw = card?.querySelector(".name-text")?.textContent?.trim() || "María";
@@ -2313,7 +2300,7 @@ async function openFromCard(card) {
 
 	// Si quieres, puedes avisar visualmente si falta phone (opcional):
 	// (Esto no bloquea abrir el modal, solo lo deja claro.)
- const mode = card?.querySelector(".call-btn")?.dataset?.callMode || "video";
+  const mode = card.querySelector(".call-btn")?.dataset?.callMode || "video";
   configureCallModal(mode);
 	if (!phone) {
 		headline.textContent = "Falta el teléfono";
@@ -2330,21 +2317,21 @@ async function openFromCard(card) {
 	if (remoteVideo) remoteVideo.innerHTML = "";
 	if (localVideo) localVideo.innerHTML = "";
 
-    overlay.hidden = false;
-    overlay.setAttribute("aria-hidden", "false");
-    overlay.classList.add("is-open");
+	overlay.hidden = false;
+	overlay.classList.add("is-open");
+	overlay.setAttribute("aria-hidden", "false");
+	lockScroll();
+}
 
-    // 1) refresca coins reales (y otros campos) desde api_user_data
-    // 2) repinta header/VC/perfil con refreshSessionUI
-    await window.SoloTIASAuth?.refreshUserData?.({ silent: true });
 
-    // Fallback (por si no hay sesión / no hay endpoint / etc.)
-    window.refreshSessionUI?.();
-
-    lockScroll();
-
-  
-  }
+	function close() {
+		overlay.classList.remove("is-open");
+		setTimeout(() => {
+			overlay.hidden = true;
+			lastFocus?.focus?.();
+		}, 200);
+		unlockScroll();
+	}
 
 	// ===============================
 	// CLICK EN BOTÓN VIDEOLLAMADA CARD
@@ -2365,8 +2352,7 @@ async function openFromCard(card) {
   // CLICK EN BOTÓN LLAMAR/VIDEOLLAMAR (PERFIL)
   // ===============================
   document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".profile-cta .call-btn");
-
+    const btn = e.target.closest(".profile-cta .call-btn");;
     if (!btn) return;
 
     // si está deshabilitado, no hacemos nada
@@ -2839,14 +2825,6 @@ function exitCallAndReturnHome() {
   let countdown = 60; // mostrar 00:60 -> 00:00 (tal cual requisito)
   let timerId = null;
 
-  // =========================
-  // NUEVO: Estado login real (proxy /api/auth.php)
-  // =========================
-  let preloginUserId = "";      // user_llamametu_id devuelto por prelogin
-  let otpAttemptsLeft = 3;      // máximo 3 intentos fallidos
-  let verifyingOtp = false;     // evita doble verificación
-  let sendingPhone = false;     // evita doble envío prelogin
-
   // ---------- Helpers ----------
   const onlyDigits = (s) => (s || "").replace(/\D+/g, "");
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -2870,30 +2848,6 @@ function exitCallAndReturnHome() {
 
   function requiredDigits() {
     return selected?.digits ?? 9;
-  }
-
-  function setNiceError(msg) {
-    if (!errorEl) return;
-    errorEl.textContent = msg || "";
-  }
-
-  async function callAuthProxy(payload) {
-    const res = await fetch("/api/auth.php", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) throw new Error("network");
-    const data = await res.json().catch(() => null);
-    if (!data) throw new Error("invalid_json");
-    return data;
-  }
-
-  function resetOtpAttempts() {
-    otpAttemptsLeft = 3;
-    verifyingOtp = false;
   }
 
   function updatePhoneUI({ silent = false } = {}) {
@@ -2922,12 +2876,6 @@ function exitCallAndReturnHome() {
     const shown = maskedPhone || formatWithMask(phoneDigits, selected.mask);
     return `${selected.prefix} ${shown}`.trim();
   }
-  function getE164Phone() {
-    // limpiar prefijo: "+1 (DO)" → "1"
-    const prefixDigits = onlyDigits(selected.prefix);
-    // unir todo sin espacios
-    return `+${prefixDigits}${phoneDigits}`;
-  }
 
   function setStep(nextStep) {
     step = nextStep;
@@ -2950,11 +2898,6 @@ function exitCallAndReturnHome() {
     // iniciar timer y OTP
     resetOtp();
     startTimer();
-
-    // NUEVO: re-habilitar OTP inputs al entrar en step2
-    otpInputs.forEach((i) => (i.disabled = false));
-    resetOtpAttempts();
-    setNiceError("");
 
     setTimeout(() => otpInputs[0]?.focus?.(), 0);
   }
@@ -2987,11 +2930,6 @@ function exitCallAndReturnHome() {
     maskedPhone = "";
     countdown = 60;
 
-    // NUEVO: reset login real
-    preloginUserId = "";
-    resetOtpAttempts();
-    sendingPhone = false;
-
     // select
     countrySel.value = selected.code;
 
@@ -3005,7 +2943,6 @@ function exitCallAndReturnHome() {
     // otp/timer
     stopTimer();
     resetOtp();
-    otpInputs.forEach((i) => (i.disabled = false));
     if (timerEl) timerEl.textContent = "00:60";
     if (phonePreview) phonePreview.textContent = "—";
 
@@ -3068,57 +3005,6 @@ function exitCallAndReturnHome() {
     return otpInputs.map((i) => onlyDigits(i.value || "")).join("");
   }
 
-  async function verifyOtpAndLogin(code6) {
-    if (verifyingOtp) return;
-
-    // si no hay prelogin id, el flujo no está listo
-    if (!preloginUserId) {
-      setNiceError("Sesión caducada. Vuelve a solicitar el código.");
-      setStep(1);
-      return;
-    }
-
-    verifyingOtp = true;
-    setNiceError("");
-
-    try {
-      const r = await callAuthProxy({
-        action: "login",
-        user_llamametu_id: preloginUserId,
-        verification_code: String(code6),
-      });
-
-    if (r && r.ok === true && r.successful_verification === true) {
-      try {
-        // Guardamos sesión completa (incluye user_data, coins, phone, virtual_number)
-        window.SoloTIASAuth?.setSession?.(r);
-      } catch {}
-
-      close();
-      return;
-    }
-
-
-      // ❌ verificación fallida: consumir intento
-      otpAttemptsLeft -= 1;
-
-      if (otpAttemptsLeft <= 0) {
-        setNiceError("Has superado el número máximo de intentos. Vuelve a solicitar un nuevo código.");
-        otpInputs.forEach((i) => (i.disabled = true));
-        return;
-      }
-
-      setNiceError(`Código incorrecto. Solo tienes 3 intentos y solo te quedan ${otpAttemptsLeft}.`);
-      resetOtp();
-      otpInputs[0]?.focus?.();
-
-    } catch (e) {
-      setNiceError("Error de conexión. Inténtalo de nuevo.");
-    } finally {
-      verifyingOtp = false;
-    }
-  }
-
   function handleOtpInput(e, idx) {
     const input = e.target;
     const v = onlyDigits(input.value).slice(0, 1);
@@ -3128,9 +3014,14 @@ function exitCallAndReturnHome() {
       otpInputs[idx + 1].focus();
     }
 
-    // Si completo (6) => verificación REAL
+    // Si completo (6) => “verificado” (simulado)
     if (getOtpValue().length === 6) {
-      verifyOtpAndLogin(getOtpValue());
+      // Simulación: guardar flag y cerrar
+      try {
+        localStorage.setItem("solotias_phone_verified", "1");
+        localStorage.setItem("solotias_phone_verified_value", getFormattedFullPhone());
+      } catch {}
+      close();
     }
   }
 
@@ -3172,25 +3063,30 @@ function exitCallAndReturnHome() {
     otpInputs[nextIndex]?.focus?.();
 
     if (digits.length === 6) {
-      // verificación REAL
-      verifyOtpAndLogin(digits);
+      try {
+        localStorage.setItem("solotias_phone_verified", "1");
+        localStorage.setItem("solotias_phone_verified_value", getFormattedFullPhone());
+      } catch {}
+      close();
     }
   }
 
   // ---------- Build select ----------
-  function populateCountries() {
-    countrySel.innerHTML = "";
-    COUNTRIES.forEach((c) => {
-      const opt = document.createElement("option");
-      opt.value = c.code;
+function populateCountries() {
+  countrySel.innerHTML = "";
+  COUNTRIES.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.code;
 
-      // SOLO el prefijo visible
-      opt.textContent = c.prefix;
+    // SOLO el prefijo visible
+    opt.textContent = c.prefix;
 
-      countrySel.appendChild(opt);
-    });
-    countrySel.value = selected.code;
-  }
+    countrySel.appendChild(opt);
+  });
+  countrySel.value = selected.code;
+}
+
+
 
   function onCountryChange() {
     const code = countrySel.value;
@@ -3211,40 +3107,10 @@ function exitCallAndReturnHome() {
     updatePhoneUI();
   }
 
-  async function onSendCode() {
-    // PRELOGIN real (envía sms)
+  function onSendCode() {
+    // No request real: avanzar al step 2
     if (sendBtn.disabled) return;
-    if (sendingPhone) return;
-
-    sendingPhone = true;
-    sendBtn.disabled = true;
-    setNiceError("");
-
-    try {
-      const fullPhone = getE164Phone();
-
-      const r = await callAuthProxy({
-        action: "prelogin",
-        phonenumber: fullPhone,
-      });
-
-      // Esperado: { ok:true, user_llamametu_id:"..." }
-      if (!r || r.ok !== true || !r.user_llamametu_id) {
-        setNiceError("No se pudo enviar el código. Inténtalo de nuevo.");
-        return;
-      }
-
-      preloginUserId = String(r.user_llamametu_id);
-
-      // pasar a step2
-      setStep(2);
-
-    } catch (e) {
-      setNiceError("Error de conexión. Inténtalo de nuevo.");
-    } finally {
-      sendingPhone = false;
-      updatePhoneUI({ silent: true });
-    }
+    setStep(2);
   }
 
   // ---------- Events ----------
@@ -3301,9 +3167,17 @@ function exitCallAndReturnHome() {
   // try {
   //   if (localStorage.getItem("solotias_phone_verified") !== "1") open();
   // } catch {}
-})();
+  })();
 
 
+
+
+
+
+
+/* =========================
+   Header dropdown (Menu)
+   ========================= */
 (function initHeaderDropdownMenu(){
   const wrap = document.querySelector(".hdr-menu");
   const btn = document.getElementById("hdrMenuBtn");
@@ -3315,13 +3189,11 @@ function exitCallAndReturnHome() {
     panel.hidden = false;
     btn.setAttribute("aria-expanded","true");
   }
-
   function close(){
     wrap.classList.remove("is-open");
     btn.setAttribute("aria-expanded","false");
     setTimeout(()=>{ panel.hidden = true; }, 180);
   }
-
   function toggle(){
     if(wrap.classList.contains("is-open")) close();
     else open();
@@ -3343,7 +3215,6 @@ function exitCallAndReturnHome() {
       close();
       return;
     }
-
     if (b.id === "hdrVideoBtn") {
       window.reloadAdsWithService?.("videocalls");
       close();
@@ -3359,33 +3230,14 @@ function exitCallAndReturnHome() {
         document.documentElement.classList.add("no-scroll");
         document.body.classList.add("no-scroll");
 
-        window.initListadosSwipe?.();
-
-        // ✅ NUEVO: enganchar carga real
-        window.bindListadosInfiniteScroll?.();
-        window.loadListados?.({ reset: true });
+        window.initListadosSwipe?.();  // ← ESTA ES LA LÍNEA CORRECTA
       }
       close();
       return;
     }
-
-
-    // ✅ NUEVO: Fichas
-    if (b.id === "hdrFichasBtn") {
-      goToStore();
-      close();
-      return;
-    }
-
-    // Perfil
-    if (b.id === "hdrPerfilBtn") {
-      window.openProfileModal?.();
-      close();
-      return;
-    }
-
     close();
-  }); // ✅ ESTE CIERRE TE FALTABA
+
+  });
 
   document.addEventListener("click",(e)=>{
     if(panel.hidden) return;
@@ -3400,8 +3252,6 @@ function exitCallAndReturnHome() {
     }
   });
 })();
-
-
 
 /* =========================
    Listados Modal (close)
@@ -3442,10 +3292,11 @@ function exitCallAndReturnHome() {
    Políticas y Términos modal
    ========================= */
 (function initPoliciesModal(){
+  const btn = document.getElementById("policiesBtn");
   const overlay = document.getElementById("policiesOverlay");
   const closeBtn = document.getElementById("policiesCloseBtn");
   const content = document.getElementById("policiesContent");
-  if(!overlay || !closeBtn || !content) return;
+  if(!btn || !overlay || !closeBtn || !content) return;
 
   let loaded = false;
 
@@ -3486,10 +3337,7 @@ function exitCallAndReturnHome() {
     setTimeout(()=>{ overlay.hidden = true; }, 180);
   }
 
-  // ✅ API para usar “más adelante”
-  window.openPoliciesModal = open;
-  window.closePoliciesModal = close;
-
+  btn.addEventListener("click",(e)=>{ e.preventDefault(); open(); });
   closeBtn.addEventListener("click", close);
   overlay.addEventListener("click",(e)=>{ if(e.target === overlay) close(); });
   document.addEventListener("keydown",(e)=>{
@@ -3498,8 +3346,6 @@ function exitCallAndReturnHome() {
       close();
     }
   });
-
-  })();
 
   // ===============================
 // Cookie Consent (UE) — simple y compatible
@@ -3559,732 +3405,6 @@ function exitCallAndReturnHome() {
     // Asegura que NO se carguen scripts no esenciales.
     // Si ya los cargas en HTML, muévelos a enableNonEssentialCookies()
   }
-
 })();
 
-
-/* =========================
-   AUTH SESSION (SoloTIASAuth) + UI SYNC
-   ========================= */
-(function initSoloTIASAuth(){
-  const KEY_SESSION = "solotias_session_v1"; // JSON con respuesta de login (incluye user_data)
-  const KEY_LOGGED  = "solotias_logged";     // "1" / null
-  const KEY_UID     = "solotias_user_llamametu_id";
-
-  // =========================
-  // USER DATA REFRESH (coins, phone, virtual_number) via Cloud Function api_user_data
-  // =========================
-  // Configurable URL (por si lo sirves vía proxy PHP):
-  // window.__USER_DATA_URL = "/api/user_data.php" (ejemplo)
-  const USER_DATA_URL = window.__USER_DATA_URL || "/api/user_data.php";
-
-  let userDataInFlight = null;
-
-  async function fetchUserDataFromServer(user_llamametu_id) {
-    if (!user_llamametu_id) throw new Error("missing_user_llamametu_id");
-
-    const res = await fetch(USER_DATA_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify({ user_llamametu_id: String(user_llamametu_id) }),
-    });
-
-    if (!res.ok) throw new Error("user_data_network");
-
-    const raw = await res.json().catch(() => null);
-    if (!raw) throw new Error("user_data_invalid_json");
-
-    // Permitimos ambos formatos:
-    // 1) Directo: { objectId, virtual_number, phone, coins }
-    // 2) Envuelto: { result: { ... } }
-    const data = (raw && raw.result && typeof raw.result === "object") ? raw.result : raw;
-
-    // Validación mínima
-    if (!data || !data.objectId) throw new Error("user_data_invalid_payload");
-
-    return data;
-  }
-
-  function mergeUserDataIntoSession(userData) {
-    const sess = getSession();
-    if (!sess) return null;
-
-    // mantenemos todo lo demás; solo actualizamos user_data
-    sess.user_data = {
-      ...(sess.user_data || {}),
-      objectId: userData.objectId ?? sess.user_data?.objectId,
-      virtual_number: userData.virtual_number ?? sess.user_data?.virtual_number,
-      phone: userData.phone ?? sess.user_data?.phone,
-      coins: userData.coins ?? sess.user_data?.coins,
-    };
-
-    try {
-      localStorage.setItem(KEY_SESSION, JSON.stringify(sess));
-      if (sess?.user_data?.objectId) localStorage.setItem(KEY_UID, String(sess.user_data.objectId));
-    } catch {}
-
-    return sess;
-  }
-
-async function refreshUserData({ silent = true } = {}) {
-  const sess = getSession();
-  const uid =
-    sess?.user_data?.objectId ||
-    localStorage.getItem(KEY_UID) ||
-    null;
-
-  if (!uid) return null;
-
-  // Evita llamadas duplicadas si se abre/cierra rápido el modal
-  if (userDataInFlight) return userDataInFlight;
-
-  // 🔄 ACTIVAR SPINNER (ANTES de llamar a la API)
-  window.__COINS_LOADING__ = true;
-  window.refreshSessionUI?.();
-
-  userDataInFlight = (async () => {
-    try {
-      const userData = await fetchUserDataFromServer(uid);
-      mergeUserDataIntoSession(userData);
-      return userData;
-    } catch (e) {
-      if (!silent) console.error("[api_user_data] error:", e);
-      return null;
-    } finally {
-      userDataInFlight = null;
-
-      // 🔄 DESACTIVAR SPINNER (cuando termina la llamada)
-      window.__COINS_LOADING__ = false;
-      window.refreshSessionUI?.();
-    }
-  })();
-
-  return userDataInFlight;
-}
-
-
-  function safeParse(raw){
-    try { return JSON.parse(raw); } catch { return null; }
-  }
-
-function getSession(){
-  const raw = localStorage.getItem(KEY_SESSION);
-  const data = raw ? safeParse(raw) : null;
-  if (!data) return null;
-
-  // ✅ Requisito mínimo real: tener user_data.objectId
-  if (!data.user_data || !data.user_data.objectId) return null;
-
-  // ✅ successful_verification lo tratamos como "soft"
-  // (no bloquea refresco de coins si viene como "true" o 1 o no viene)
-  return data;
-}
-
-
-  function isLogged(){
-    return !!getSession();
-  }
-
-  function setSession(loginResponse){
-    try {
-      localStorage.setItem(KEY_SESSION, JSON.stringify(loginResponse));
-      localStorage.setItem(KEY_LOGGED, "1");
-      if (loginResponse?.user_data?.objectId) {
-        localStorage.setItem(KEY_UID, String(loginResponse.user_data.objectId));
-      }
-    } catch {}
-    window.refreshSessionUI?.();
-  }
-
-  function clearSession(){
-    try {
-      // Sesión principal (JSON completo con user_data)
-      localStorage.removeItem("solotias_session_v1");
-
-      // Flag de login
-      localStorage.removeItem("solotias_logged");
-
-      // ID usuario
-      localStorage.removeItem("solotias_user_llamametu_id");
-
-      // Compatibilidad con sistema anterior
-      localStorage.removeItem("solotias_phone_verified");
-      localStorage.removeItem("solotias_phone_verified_value");
-
-    } catch (e) {
-      console.error("Error limpiando sesión:", e);
-    }
-
-    // Sincroniza Header, VC modal y Perfil
-    window.refreshSessionUI?.();
-  }
-
-  window.SoloTIASAuth = { getSession, isLogged, setSession, clearSession, refreshUserData };
-
-
-window.refreshSessionUI = function refreshSessionUI(){
-  const sess = getSession();
-  const logged = !!sess;
-  const coins = sess?.user_data?.coins;
-  const phone = sess?.user_data?.phone;
-  const code  = sess?.user_data?.virtual_number;
-
-  // --- Header icons (menu colapsado) ---
-  const fichasBtn = document.getElementById("hdrFichasBtn");
-  const perfilBtn = document.getElementById("hdrPerfilBtn");
-  if (fichasBtn) fichasBtn.hidden = !logged;
-  if (perfilBtn) perfilBtn.hidden = !logged;
-
-  // --- VC modal buttons (mensaje / coins info) ---
-  const vcMsgBtn   = document.getElementById("vcMsgBtn");
-  const vcCoinsBtn = document.getElementById("vcCoinsBtn");
-
-  if (vcMsgBtn && vcCoinsBtn) {
-    if (logged) {
-      vcMsgBtn.hidden = true;
-      vcCoinsBtn.hidden = false;
-
-      const hasCoins = (coins === 0 || coins === "0" || coins != null);
-      const loadingCoins = !!window.__COINS_LOADING__ && !hasCoins;
-
-      if (loadingCoins) {
-        vcCoinsBtn.innerHTML = `
-          <span class="coins-loading">
-            <span>Dispones de coins</span>
-            <span class="coins-spinner" aria-hidden="true"></span>
-            <span>· comprar más fichas</span>
-          </span>
-        `;
-      } else {
-        vcCoinsBtn.textContent = `Dispones de coins: ${hasCoins ? coins : "—"} · comprar más fichas`;
-      }
-    } else {
-      vcMsgBtn.hidden = false;
-      vcCoinsBtn.hidden = true;
-    }
-  }
-
-  // --- VC modal primary button (INICIAR LLAMADA / VIDEO) ---
-  const vcPrimaryBtn = document.getElementById("vcPrimaryBtn");
-  if (vcPrimaryBtn) {
-    if (logged) {
-      vcPrimaryBtn.classList.remove("is-disabled");
-      vcPrimaryBtn.disabled = false;
-      vcPrimaryBtn.removeAttribute("aria-disabled");
-    } else {
-      vcPrimaryBtn.classList.add("is-disabled");
-      vcPrimaryBtn.disabled = true;
-      vcPrimaryBtn.setAttribute("aria-disabled", "true");
-    }
-  }
-
-  // --- Perfil modal (pintado en vivo si existe setter) ---
-  window.setProfileModalData?.({
-    code: code ?? "—",
-    phone: phone ?? "—",
-    coins: coins ?? "—"
-  });
-};
-
-  // primera sincronización al cargar
-  window.refreshSessionUI?.();
-  document.addEventListener("DOMContentLoaded", () => {
-    window.refreshSessionUI?.();
-  });
-})();
-
-// --- VC Coins → Tienda ---
-document.addEventListener("DOMContentLoaded", () => {
-  const vcCoinsBtn = document.getElementById("vcCoinsBtn");
-  if (!vcCoinsBtn) return;
-
-  vcCoinsBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    goToStore();
-  });
-});
-
-
-
-/* =========================
-   PROFILE MODAL (ADAPTADO A TU HTML)
-   ========================= */
-(function initProfileModal(){
-
-  const overlay = document.getElementById("profileOverlay");
-  const closeBtn = document.getElementById("profileCloseBtn");
-
-  const elCode = document.getElementById("profileCode");
-  const elPhoneMask = document.getElementById("profilePhoneMask");
-  const elPhoneTail = document.getElementById("profilePhoneTail");
-  const elTokens = document.getElementById("profileTokens");
-
-  const storeBtn = document.getElementById("profileStoreBtn");
-  const logoutBtn = document.getElementById("profileLogoutBtn");
-
-  if(!overlay || !closeBtn) return;
-
-  function lock(){
-    document.documentElement.classList.add("auth-open");
-    document.body.classList.add("auth-open");
-  }
-
-  function unlock(){
-    document.documentElement.classList.remove("auth-open");
-    document.body.classList.remove("auth-open");
-  }
-
-  function paintFromSession(){
-    const sess = window.SoloTIASAuth?.getSession?.();
-    const ud = sess?.user_data || {};
-
-    // Código virtual_number
-    if (elCode) {
-      elCode.textContent = ud.virtual_number != null
-        ? String(ud.virtual_number)
-        : "—";
-    }
-
-    // Teléfono completo (lo pintamos entero en profilePhoneMask)
-    if (elPhoneMask) {
-      if (ud.phone) {
-        elPhoneMask.textContent = String(ud.phone);
-      } else {
-        elPhoneMask.textContent = "—";
-      }
-    }
-
-    // Si existe el span tail, lo ocultamos porque ahora mostramos teléfono completo
-    if (elPhoneTail) {
-      elPhoneTail.hidden = true;
-    }
-
-    // Coins (sin número + spinner mientras carga)
-    if (elTokens) {
-      const coins = ud.coins;
-      const hasCoins = (coins === 0 || coins === "0" || coins != null);
-      const loadingCoins = !!window.__COINS_LOADING__ && !hasCoins;
-
-      if (loadingCoins) {
-        elTokens.innerHTML = `<span class="coins-spinner" aria-hidden="true"></span>`;
-      } else {
-        elTokens.textContent = hasCoins ? String(coins) : "—";
-      }
-    }
-
-  }
-
-  async function open(){
-  if (!window.SoloTIASAuth?.isLogged?.()) {
-    window.openPhoneAuthModal?.();
-    return;
-  }
-
-  // 🔄 refresca coins reales (y otros campos) desde api_user_data
-  await window.SoloTIASAuth?.refreshUserData?.({ silent: true });
-
-  // pinta ya con la sesión actualizada
-  paintFromSession();
-
-  overlay.hidden = false;
-  requestAnimationFrame(()=> overlay.classList.add("is-open"));
-  overlay.setAttribute("aria-hidden","false");
-
-  lock();
-}
-
-
-  function close(){
-    overlay.classList.remove("is-open");
-    overlay.setAttribute("aria-hidden","true");
-    unlock();
-
-    setTimeout(()=>{
-      overlay.hidden = true;
-    }, 180);
-  }
-
-  // Exponer API
-  window.openProfileModal = open;
-  window.closeProfileModal = close;
-
-  // Para que refreshAuthUI pueda actualizar datos en caliente
-  window.setProfileModalData = function setProfileModalData(data = {}){
-    if (data.code != null && elCode) {
-      elCode.textContent = String(data.code);
-    }
-
-    if (data.phone != null && elPhoneMask) {
-      elPhoneMask.textContent = String(data.phone);
-    }
-
-  if (elTokens) {
-    const coins = data.coins;
-    const hasCoins = (coins === 0 || coins === "0" || coins != null);
-    const loadingCoins = !!window.__COINS_LOADING__ && !hasCoins;
-
-    if (loadingCoins) {
-      elTokens.innerHTML = `<span class="coins-spinner" aria-hidden="true"></span>`;
-    } else if (hasCoins) {
-      elTokens.textContent = String(coins);
-    }
-  }
-
-
-    if (elPhoneTail) {
-      elPhoneTail.hidden = true;
-    }
-  };
-
-  closeBtn.addEventListener("click", (e)=>{
-    e.preventDefault();
-    close();
-  });
-
-  overlay.addEventListener("click",(e)=>{
-    if(e.target === overlay) close();
-  });
-
-  document.addEventListener("keydown",(e)=>{
-    if(e.key === "Escape" && overlay && !overlay.hidden){
-      e.preventDefault();
-      close();
-    }
-  });
-
-  // Enlaces legales
-  overlay.querySelectorAll("[data-open-policies]").forEach((btn)=>{
-    btn.addEventListener("click",(e)=>{
-      e.preventDefault();
-      close();
-      window.openPoliciesModal?.();
-    });
-  });
-
-  storeBtn?.addEventListener("click",(e)=>{
-    e.preventDefault();
-    goToStore();
-  });
-
-
-  // Abandonar → cerrar sesión
-  logoutBtn?.addEventListener("click",(e)=>{
-    e.preventDefault();
-    window.SoloTIASAuth?.clearSession?.();
-    close();
-  });
-
-})();
-
-// ===============================
-// CLOSE ALL OVERLAYS + GO STORE
-// ===============================
-function closeAllOverlaysForNavigation() {
-  try {
-    // --- Menú hamburguesa (drawer) ---
-    const menuOverlay = document.getElementById("menuOverlay");
-    const menuBtn = document.getElementById("menuBtn");
-    if (menuOverlay) {
-      menuOverlay.classList.remove("is-open");
-      menuOverlay.hidden = true;
-    }
-    if (menuBtn) menuBtn.setAttribute("aria-expanded", "false");
-
-    // --- Menú colapsado header (dropdown) ---
-    const hdrWrap = document.querySelector(".hdr-menu");
-    const hdrPanel = document.getElementById("hdrMenuPanel");
-    const hdrBtn = document.getElementById("hdrMenuBtn");
-    if (hdrWrap) hdrWrap.classList.remove("is-open");
-    if (hdrPanel) hdrPanel.hidden = true;
-    if (hdrBtn) hdrBtn.setAttribute("aria-expanded", "false");
-
-    // --- Overlays “grandes” ---
-    const ids = [
-      "vcOverlay",
-      "authOverlay",
-      "profileOverlay",
-      "listadosOverlay",
-      "policiesOverlay",
-      "mediaViewer",
-      "geoInfoOverlay", // popup info GPS (si existe)
-    ];
-
-    ids.forEach((id) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-
-      el.classList.remove("is-open");
-      el.classList.remove("open");   // panel usa .open
-      el.classList.add("hidden");    // varios usan .hidden
-      el.hidden = true;              // overlays usan hidden attribute
-      el.setAttribute("aria-hidden", "true");
-    });
-
-    // Limpiar contenido del mediaViewer si aplica (evita “flash” al volver)
-    const mediaContent = document.getElementById("mediaViewerContent");
-    if (mediaContent) mediaContent.innerHTML = "";
-
-    // --- Estado global de scroll / fullscreen ---
-    document.documentElement.classList.remove("no-scroll", "auth-open", "viewer-open");
-    document.body.classList.remove("no-scroll", "auth-open", "viewer-open", "call-active");
-
-    // Si estás en callRoot, lo ocultamos también
-    const callRoot = document.getElementById("callRoot");
-    if (callRoot) {
-      callRoot.hidden = true;
-      callRoot.classList.add("hidden");
-      callRoot.setAttribute("aria-hidden", "true");
-    }
-
-    // opcional: parar agora si existe (no bloquea navegación)
-    try { window.stopAgoraCall?.(); } catch {}
-
-  } catch (e) {
-    // no hacemos nada, es “best-effort”
-  }
-}
-
-function goToStore() {
-  closeAllOverlaysForNavigation();
-  // navega a tienda en raíz
-  window.location.href = "/tienda.html";
-}
-
-/* =========================
-   Listados: Calls (ParseCloud)
-   ========================= */
-(function initListadosCallsModule(){
-  const ENDPOINT = (window.__CALLS_URL || "/api/calls.php");
-
-  let page = 1;
-  let loading = false;
-  let exhausted = false;
-  let scrollBound = false;
-
-  function $(id){ return document.getElementById(id); }
-
-  function getUserId(){
-    // Preferimos la sesión (si existe), y si no, el localStorage que ya usas en otros flujos
-    const fromSession =
-      window.SoloTIASAuth?.getSession?.()?.user_data?.objectId ||
-      window.session?.user_data?.objectId;
-
-    const fromLS = (() => {
-      try { return localStorage.getItem("solotias_user_llamametu_id") || ""; } catch { return ""; }
-    })();
-
-    return (fromSession || fromLS || "").trim();
-  }
-
-  function showLoading(on){
-    const el = $("listadosLoading");
-    if (el) el.hidden = !on;
-  }
-  function showEmpty(on){
-    const el = $("listadosEmpty");
-    if (el) el.hidden = !on;
-  }
-
-  function parseDateStr(s){
-    // "04/02/26 09:57"
-    if (!s || typeof s !== "string") return null;
-    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})$/);
-    if (!m) return null;
-    const dd = Number(m[1]), mm = Number(m[2]), yy = Number(m[3]);
-    const HH = Number(m[4]), MN = Number(m[5]);
-    const year = 2000 + yy;
-    return new Date(year, mm - 1, dd, HH, MN, 0, 0);
-  }
-
-  function formatDaySep(d){
-    // “Hoy · dd/mm/yy”, “Ayer · dd/mm/yy”, si no “dd/mm/yy”
-    const pad = (n)=> String(n).padStart(2,"0");
-    const dd = pad(d.getDate());
-    const mm = pad(d.getMonth()+1);
-    const yy = String(d.getFullYear()).slice(-2);
-    const base = `${dd}/${mm}/${yy}`;
-
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const that = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const diffDays = Math.round((that - today) / 86400000);
-
-    if (diffDays === 0) return `Hoy · ${base}`;
-    if (diffDays === -1) return `Ayer · ${base}`;
-    return base;
-  }
-
-  function typeLabel(call_type){
-    return call_type === "videocall" ? "Videollamada" : "Llamada";
-  }
-
-  function safeImg(url){
-    const u = (url || "").trim();
-    return u || "img/foto1.jpg"; // fallback local (no rompe layout)
-  }
-
-  function createDaySepEl(text){
-    const wrap = document.createElement("div");
-    wrap.className = "listados-day";
-    wrap.innerHTML = `<div class="listados-day-sep"></div>`;
-    wrap.querySelector(".listados-day-sep").textContent = text;
-    return wrap;
-  }
-
-  function createRowEl(call){
-    const row = document.createElement("div");
-    row.className = "listados-row";
-    row.dataset.rowId = call?.objectId || "";
-    row.dataset.kind = call?.call_type || "call";
-
-    const photo = safeImg(call?.advertisement?.url_principal_photo);
-    const label = typeLabel(call?.call_type);
-    const dateTxt = (call?.date || "").trim();
-    const dur = (call?.duration || "").trim();
-    const coins = (call?.coins ?? "").toString().trim();
-
-    row.innerHTML = `
-      <div class="listados-row__bg" aria-hidden="true">
-        <button class="listados-row__delete" type="button" aria-label="Eliminar">
-          <span class="listados-row__bg-label">Eliminar</span>
-          <span class="listados-row__bg-ico" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path fill="currentColor" d="M9 3h6l1 2h5v2H3V5h5l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9z"/>
-            </svg>
-          </span>
-        </button>
-      </div>
-
-      <div class="listados-row__fg">
-        <div class="listados-item">
-          <img class="listados-avatar" src="${photo}" alt="Avatar" loading="lazy">
-          <div class="listados-meta">
-            <div class="listados-type">${label}</div>
-            <div class="listados-sub">${dateTxt} · ${dur}</div>
-          </div>
-          <div class="listados-right">
-            <span class="listados-badge">${coins} Fichas</span>
-          </div>
-        </div>
-      </div>
-    `;
-    return row;
-  }
-
-  async function fetchPage(p){
-    const userId = getUserId();
-    if (!userId) throw new Error("missing_user_llamametu_id_front");
-
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_llamametu_id: userId, page: p })
-    });
-
-    const raw = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(raw?.error || "calls_http_error");
-
-    // Tu proxy devuelve directamente el result (ok/page/calls)
-    if (!raw || raw.ok !== true || !Array.isArray(raw.calls)) {
-      throw new Error("calls_invalid_payload");
-    }
-    return raw;
-  }
-
-  function sortCallsDesc(calls){
-    return calls.slice().sort((a,b)=>{
-      const da = parseDateStr(a?.date);
-      const db = parseDateStr(b?.date);
-      return (db?.getTime?.() || 0) - (da?.getTime?.() || 0);
-    });
-  }
-
-  function renderAppend(calls){
-    const list = $("listadosList");
-    if (!list) return;
-
-    // agrupamos por día “bonito”
-    let lastSep = null;
-    calls.forEach((c)=>{
-      const d = parseDateStr(c?.date);
-      const sep = d ? formatDaySep(d) : "—";
-
-      if (sep !== lastSep) {
-        list.appendChild(createDaySepEl(sep));
-        lastSep = sep;
-      }
-      list.appendChild(createRowEl(c));
-    });
-  }
-
-  async function load({ reset=false } = {}){
-    const list = $("listadosList");
-    if (!list) return;
-    if (loading) return;
-    if (exhausted && !reset) return;
-
-    if (reset) {
-      page = 1;
-      exhausted = false;
-      list.innerHTML = "";
-      showEmpty(false);
-    }
-
-    loading = true;
-    showLoading(true);
-
-    try{
-      const data = await fetchPage(page);
-      const calls = sortCallsDesc(data.calls);
-
-      if (page === 1 && calls.length === 0) {
-        showEmpty(true);
-        exhausted = true;
-        return;
-      }
-
-      if (calls.length === 0) {
-        exhausted = true;
-        return;
-      }
-
-      renderAppend(calls);
-
-      // Si devuelve hasta 50 por página, cuando venga menos de 50 suele indicar fin
-      if (calls.length < 50) exhausted = true;
-
-      page += 1;
-
-    } catch (e) {
-      // Si quieres ver el error real en consola:
-      console.error("Listados load error:", e);
-      // mantenemos el empty si no hay nada en pantalla
-      if ((list.children?.length || 0) === 0) showEmpty(true);
-    } finally {
-      showLoading(false);
-      loading = false;
-    }
-  }
-
-  function bindInfiniteScroll(){
-    if (scrollBound) return;
-    const body = document.querySelector("#listadosOverlay .listados-body");
-    if (!body) return;
-
-    body.addEventListener("scroll", () => {
-      if (loading || exhausted) return;
-      const nearBottom = body.scrollTop + body.clientHeight >= body.scrollHeight - 120;
-      if (nearBottom) load({ reset:false });
-    }, { passive:true });
-
-    scrollBound = true;
-  }
-
-  // Delete rojo: por ahora solo quita del DOM, API borrar vendrá después
-  // (tu motor swipe ya llama onDelete(id,row) y hace row.remove()) :contentReference[oaicite:2]{index=2}
-
-  window.loadListados = load;
-  window.bindListadosInfiniteScroll = bindInfiniteScroll;
 })();
