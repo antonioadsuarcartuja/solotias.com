@@ -14,6 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 // ✅ OJO: si está en /api, config también en /api
 require_once __DIR__ . '/config.php';
 
+session_start();
+
 if (!defined('PARSE_APP_ID') || !defined('PARSE_REST_KEY') || !defined('PARSE_SERVER_URL')) {
   http_response_code(500);
   echo json_encode(['error' => 'missing_parse_config']);
@@ -37,10 +39,11 @@ if (!is_array($payload)) {
   exit;
 }
 
-$userId = trim((string)($payload['user_llamametu_id'] ?? ''));
+// ✅ NUEVO: el user id se obtiene exclusivamente desde sesión
+$userId = isset($_SESSION['user_llamametu_id']) ? trim((string)$_SESSION['user_llamametu_id']) : '';
 if ($userId === '') {
-  http_response_code(400);
-  echo json_encode(['error' => 'missing_user_llamametu_id']);
+  http_response_code(401);
+  echo json_encode(['error' => 'session_required']);
   exit;
 }
 

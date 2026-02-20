@@ -39,8 +39,11 @@ body{
   align-items:center;
   justify-content:space-between;
 
-  background: rgba(255,255,255,.92);
+ background: rgba(255,255,255,.97);
   z-index: 1000;
+  /* transform: translate3d(0,0,0);
+  will-change: transform; */
+
 }
 
 /* =========================
@@ -75,19 +78,26 @@ body{
 }
 
 .swipe-card{
-  position:absolute;
-  inset:0;
+  position: absolute;
+  inset: 0;
   border-radius: 34px;
-  overflow:hidden;
-  background:#f3f3f5;
+  overflow: hidden;
+  background: #f3f3f5;
   box-shadow: var(--shadow);
-  touch-action:none;
-  opacity:0;
+
+  touch-action: none;
+  pointer-events: none;
+
+  opacity: 0;
   transform: scale(.985);
   transition: opacity .22s ease, transform .22s ease;
-  pointer-events:none;
+
+  /* composición / estabilidad */
   will-change: transform;
+  contain: paint;
+  isolation: isolate;
 }
+
 
 .swipe-card.active{
   opacity:1;
@@ -101,6 +111,15 @@ body{
   transform: translateY(10px) scale(.965);
   pointer-events:none;
   z-index:5;
+}
+
+/* Carta anterior visible debajo cuando arrastras a la derecha */
+.swipe-card.peek-prev{
+  opacity:1;
+  transform: translateY(10px) scale(.965);
+  pointer-events:none;
+  z-index:5;
+  transition: none !important;
 }
 
 .swipe-card img,
@@ -165,6 +184,14 @@ body{
   }
 }
 
+.swipe-card video{
+  transform: translateZ(0);    /* fuerza composición consistente */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  opacity: 0.99999;            /* truco: evita overlay raro en algunos Chrome */
+}
+
+
 
 .topbar::before{
   content:"";
@@ -181,6 +208,18 @@ body{
   backdrop-filter: none !important;
   background: rgba(255,255,255,.97) !important;
 }
+/* Chrome Android/PWA: evita bug de compositor (el ::before tapa botones) */
+.is-android .topbar::before{
+  content: none !important;
+}
+
+/* --- FIX Chrome Android PWA: header desaparece al volver atrás --- */
+.is-android .topbar{
+  transform: translateZ(0);   /* fija capa GPU estable */
+  will-change: transform;     /* evita re-evaluación de capa */
+  isolation: isolate;         /* stacking context propio */
+}
+
 /* stacking normal */
 .right,
 .icon-btn,
@@ -205,6 +244,11 @@ body{
 }
 .icon-btn:active{transform: scale(.98);}
 .icon-btn svg{width:20px; height:20px; fill:#141517;}
+
+/* FIX Chrome Android: SVGs con fill="none" se quedan invisibles al volver atrás */
+.icon-btn{ color:#141517; } /* usaremos currentColor */
+.icon-btn svg{ width:20px; height:20px; }
+
 
 /* GPS pulse */
 .gps-pulse{ animation: gpsPopGlow 1.4s ease-in-out infinite; }
@@ -2156,3 +2200,423 @@ body.auth-open{
   justify-content:center;
 }
 
+
+
+/* ========== Bottom Nav (solo visual) ========== */
+:root{
+  --bottom-nav-h: 70px;
+}
+
+/* Para que no tape el contenido: añade espacio abajo */
+body{
+  padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+}
+
+.bottom-nav{
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  height: var(--bottom-nav-h);
+  z-index: 9999;
+
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+
+  padding: 10px 10px;
+  border-radius: 18px;
+
+  /* look “bonito” */
+  background: rgba(20, 20, 24, 0.78);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+
+  border: 1px solid rgba(255,255,255,0.10);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+
+  /* ayuda a Chrome a mantener capa */
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.bottom-nav__btn{
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,0.92);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  gap: 6px;
+  padding: 8px 6px;
+  border-radius: 14px;
+
+  /* NO hacen nada; pero que se note “tocable” */
+  cursor: default;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bottom-nav__btn svg{
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  opacity: 0.95;
+}
+
+.bottom-nav__btn span{
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  opacity: 0.9;
+}
+
+/* estado visual al pulsar (solo feedback, sin acción) */
+.bottom-nav__btn:active{
+  background: rgba(255,255,255,0.08);
+}
+
+/* igual idea que gps-pulse pero aún más sutil */
+.hdr-alive {
+  animation: hdrAlive 2.4s ease-in-out infinite;
+}
+
+@keyframes hdrAlive {
+  0%, 100% { transform: translateZ(0) scale(1); opacity: 1; }
+  50% { transform: translateZ(0) scale(1.01); opacity: 0.999; }
+}
+
+/* --- FIX REAL: el texto de #geoLine no debe empujar los botones de la derecha --- */
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 10px;
+}
+
+.left{
+  flex: 1 1 auto;     /* la izquierda puede encoger */
+  min-width: 0;       /* IMPORTANTE para que el ellipsis funcione */
+}
+
+.right{
+  flex: 0 0 auto;     /* la derecha NO encoge */
+  margin-left: 8px;
+}
+
+.right .icon-btn{
+  flex: 0 0 auto;     /* cada botón mantiene su tamaño */
+}
+
+/* #geoLine: más agresivo en móvil para que SIEMPRE quepan 3 botones a la derecha */
+.brand-sub{
+  max-width: 40vw;    /* en móvil 62vw es demasiado */
+}
+
+/* En pantallas un poco mayores, podemos permitir algo más */
+@media (min-width: 420px){
+  .brand-sub{ max-width: 52vw; }
+}
+
+
+/* ===== Menú colapsado desde GPS (solo visual) ===== */
+.hdr-collapsed{
+  position: relative;
+}
+
+.hdr-collapsed > summary{
+  list-style: none;
+}
+.hdr-collapsed > summary::-webkit-details-marker{
+  display:none;
+}
+
+/* Asegura que summary se vea como botón (ya usa icon-btn) */
+.hdr-collapsed > summary{
+  cursor: pointer;
+}
+
+/* Panel flotante */
+.hdr-collapsed__panel{
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 9999;
+
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.98);
+  box-shadow: 0 16px 40px rgba(0,0,0,.18);
+
+  display: none;
+  transform-origin: top left;
+}
+
+/* Cuando está abierto */
+.hdr-collapsed[open] .hdr-collapsed__panel{
+  display: block;
+  animation: hdrMenuPop .14s ease-out both;
+}
+
+@keyframes hdrMenuPop{
+  from{ transform: translateY(-4px) scale(.98); opacity: 0; }
+  to  { transform: translateY(0)  scale(1);    opacity: 1; }
+}
+
+/* Grid de botones */
+.hdr-collapsed__group{
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 44px;
+  gap: 8px;
+}
+
+/* Botón interno (hereda .icon-btn) */
+.hdr-collapsed__item{
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+}
+
+/* Iconos placeholder */
+.hdr-collapsed__ico{
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ===== Mostrar guest vs logged (solo visual) ===== */
+.hdr-collapsed__group--logged{ display:none; }
+
+/* Cuando quieras ver el modo logueado: añade class="is-logged" a <html> o <body> */
+.is-logged .hdr-collapsed__group--guest{ display:none; }
+.is-logged .hdr-collapsed__group--logged{ display:grid; }
+
+
+/* ===== Gesture Coach (solo 1 vez) ===== */
+.gesture-coach{
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  pointer-events: none; /* no bloquea la app */
+}
+
+.gesture-coach__scrim{
+  position:absolute;
+  inset:0;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.22) 0%, rgba(0,0,0,.42) 55%, rgba(0,0,0,.55) 100%);
+}
+
+.gesture-coach__hud{
+  position:absolute;
+  left: 16px;
+  right: 16px;
+  top: 74px; /* debajo de tu topbar */
+  margin: 0 auto;
+  max-width: 420px;
+
+  padding: 14px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(20,20,24,.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: rgba(255,255,255,.95);
+  box-shadow: 0 18px 50px rgba(0,0,0,.35);
+}
+
+.gesture-coach__title{
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: 14px;
+  line-height: 1.1;
+}
+.gesture-coach__sub{
+  margin-top: 4px;
+  opacity: .85;
+  font-size: 12px;
+}
+
+.gesture-coach__rows{
+  display:flex;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: space-between;
+}
+
+.gesture-coach__row{
+  flex: 1 1 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 8px;
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+.gesture-coach__arrow{
+  font-size: 16px;
+  line-height: 1;
+}
+.gesture-coach__label{
+  font-size: 12px;
+  opacity: .92;
+}
+
+/* Mano fantasma */
+.gesture-coach__hand{
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: rgba(255,255,255,.90);
+  box-shadow: 0 14px 38px rgba(0,0,0,.35);
+  opacity: .85;
+  filter: blur(.2px);
+  animation: coachHand 3.8s ease-in-out infinite;
+}
+
+/* Estela */
+.gesture-coach__trail{
+  position:absolute;
+  left: 50%;
+  top: 58%;
+  width: 140px;
+  height: 6px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.75), rgba(255,255,255,0));
+  opacity: .0;
+  animation: coachTrail 3.8s ease-in-out infinite;
+}
+
+/* Secuencia: izquierda -> derecha -> arriba */
+@keyframes coachHand{
+  0%   { transform: translate(-50%,-50%) scale(1); opacity:.0; }
+  6%   { opacity:.85; }
+  20%  { transform: translate(calc(-50% - 110px), -50%) scale(.98); }
+  30%  { transform: translate(-50%,-50%) scale(1); }
+  52%  { transform: translate(calc(-50% + 110px), -50%) scale(.98); }
+  62%  { transform: translate(-50%,-50%) scale(1); }
+  82%  { transform: translate(-50%, calc(-50% - 110px)) scale(.98); }
+  92%  { transform: translate(-50%,-50%) scale(1); opacity:.85; }
+  100% { opacity:.0; }
+}
+
+@keyframes coachTrail{
+  0%, 8%  { opacity:0; transform: translate(-50%,-50%) scaleX(.7); }
+  18%     { opacity:.45; transform: translate(calc(-50% - 55px), -50%) scaleX(1); }
+  30%     { opacity:0; }
+  40%     { opacity:0; transform: translate(-50%,-50%) scaleX(.7); }
+  50%     { opacity:.45; transform: translate(calc(-50% + 55px), -50%) scaleX(1); }
+  62%     { opacity:0; }
+  72%     { opacity:0; transform: translate(-50%,-50%) rotate(-90deg) scaleX(.7); }
+  82%     { opacity:.45; transform: translate(-50%, calc(-50% - 55px)) rotate(-90deg) scaleX(1); }
+  92%,100%{ opacity:0; }
+}
+
+
+/* ===== Overlay Conectando ===== */
+.connect-ov{
+  position: fixed;
+  inset: 0;
+  z-index: 1000000; /* por encima de vcOverlay y modales */
+  display: grid;
+  place-items: center;
+}
+
+.connect-ov[hidden]{ display:none; }
+
+.connect-ov__scrim{
+  position:absolute;
+  inset:0;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.18) 0%, rgba(0,0,0,.52) 65%, rgba(0,0,0,.66) 100%);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.connect-ov__card{
+  position: relative;
+  width: min(360px, 88vw);
+  padding: 18px 16px;
+  border-radius: 20px;
+  background: rgba(20, 20, 24, .62);
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 22px 70px rgba(0,0,0,.45);
+  text-align: center;
+  color: rgba(255,255,255,.95);
+  transform: translateZ(0);
+}
+
+.connect-ov__title{
+  margin-top: 12px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: 14px;
+}
+
+.connect-ov__sub{
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: .88;
+  line-height: 1.35;
+}
+
+.connect-ov__spinner{
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
+  border-radius: 999px;
+  border: 3px solid rgba(255,255,255,.18);
+  border-top-color: rgba(255,255,255,.92);
+  animation: connectSpin .9s linear infinite;
+}
+
+@keyframes connectSpin{
+  to { transform: rotate(360deg); }
+}
+/* Botones de llamada: iconos */
+.call-icon{
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.call-icon-img{
+  width: 22px;
+  height: 22px;
+  display: block;
+  filter: brightness(0) invert(1) drop-shadow(0 1px 1px rgba(0,0,0,.35));
+}
+
+/* Colgar más grande, rojo, centro */
+.call-hangup-big{
+  width: 64px;
+  height: 64px;
+  background: rgba(230, 58, 58, .92);
+}
+.call-hangup-big .call-icon-img{
+  width: 30px;
+  height: 30px;
+}
+
+/* Estado OFF para mic/altavoz */
+.call-control.is-off{
+  background: rgba(255,255,255,.10);
+  opacity: .85;
+}

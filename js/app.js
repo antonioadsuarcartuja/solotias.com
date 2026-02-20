@@ -1,4 +1,5 @@
 (() => {
+  
   const $ = (s) => document.querySelector(s);
 
   // Detectar Android (Chrome) y marcar clase
@@ -673,9 +674,6 @@ function createCardElFromAd(ad) {
   card.dataset.available = ad?.available ? "true" : "false";
   card.dataset.service = normalizeService(ad?.service);
   card.dataset.type = kind === "video" ? "video" : "image";
-  // Mantengo data-phone para no romper el flujo de vcOverlay existente.
-  // Si en backend el "virtual_number" es el que se usa como contacto, lo dejamos aquí.
-  if (ad?.virtual_number != null) card.dataset.phone = String(ad.virtual_number);
 
   // Availability pill
   const avail = document.createElement("div");
@@ -1173,6 +1171,7 @@ async function initDynamicAds() {
     startY = 0;
   let dx = 0,
     dy = 0;
+  let underlayDirection = 0; // -1 izquierda, 1 derecha, 0 ninguno
   let startTime = 0;
 
   function showToastOnce(msg) {
@@ -1235,6 +1234,26 @@ async function initDynamicAds() {
     btn.setAttribute("aria-label", isMuted ? "Activar sonido" : "Desactivar sonido");
   }
 
+    function forceMuteActiveCardVideo() {
+    try {
+      const card = cards?.[index];
+      const v = card?.querySelector?.("video");
+      if (v) {
+        if (!v.muted) v.muted = true;
+        if (typeof updateSoundButton === "function") updateSoundButton(card);
+      }
+
+      const ph = document.getElementById("panelHero") || window.panelHero;
+      const pv = ph?.querySelector?.("video");
+      if (pv && !pv.muted) pv.muted = true;
+
+    } catch (e) {
+      console.warn("[forceMuteActiveCardVideo] error:", e);
+    }
+  }
+  window.forceMuteActiveCardVideo = forceMuteActiveCardVideo;
+
+
   function updateMediaPlayback() {
     const pref = getSoundPref();
     const unlocked = isAudioUnlocked();
@@ -1268,6 +1287,7 @@ function updateStack(){
   cards.forEach((c,i)=>{
     c.classList.toggle("active", i === index);
     c.classList.toggle("peek", i === index+1);
+    c.classList.remove("peek-prev");   // <- AÑADIDO
     if(i !== index){
       c.style.transform="";
       c.style.opacity="";
@@ -1281,7 +1301,15 @@ function updateStack(){
   prefetchNextAdsPageIfNeeded();
 
   // FIX Chrome Android – repintar topbar tras cambio de carta
-  
+  const topbar = document.querySelector(".topbar");
+  if (topbar) {
+    // Forzamos un repaint/composite rápido (workaround Chrome Android)
+  topbar.style.transform = "translateZ(0)";
+  void topbar.offsetHeight;
+  topbar.style.transform = "";
+
+
+  }
 }
 
 
@@ -1820,10 +1848,70 @@ function initPanelDragSnap() {
     return cards[index];
   }
 
+    function clearUnderlays(){
+    cards.forEach(c => c.classList.remove("peek-prev"));
+  }
+
+  function warmCardMedia(card){
+  if (!card) return;
+
+  const img = card.querySelector("img");
+  if (img) {
+    img.loading = "eager";
+    // fuerza a decodificar antes de hacerla active (reduce “blanco”)
+    if (img.decode) img.decode().catch(()=>{});
+  }
+
+  const vid = card.querySelector("video");
+  if (vid) {
+    vid.preload = "auto";
+  }
+}
+
+  function setUnderlayByDx(dx){
+
+    let newDirection = 0;
+    if (dx > 0) newDirection = 1;
+    else if (dx < 0) newDirection = -1;
+
+    // si no cambia la dirección, no hacemos nada
+    if (newDirection === underlayDirection) return;
+
+    // limpiar estado anterior
+    cards.forEach(c => c.classList.remove("peek-prev"));
+
+    const next = cards[index + 1];
+
+    // si voy a la derecha (volver atrás)
+    if (newDirection === 1) {
+
+      // ocultamos temporalmente la siguiente
+      if (next) next.classList.remove("peek");
+
+      const prev = cards[index - 1];
+      if (prev) {
+        warmCardMedia(prev); // 🔥 precarga / decode para evitar flash blanco
+        prev.classList.add("peek-prev");
+      }
+
+    } else {
+      // si voy a la izquierda o vuelvo al centro, restauramos la siguiente
+      if (next) next.classList.add("peek");
+    }
+
+    underlayDirection = newDirection;
+  }
+
+
+
+
   function onStart(x, y) {
     const card = activeCard();
     if (!card) return;
     dragging = true;
+    clearUnderlays();   // ← añade esta línea aquí
+    underlayDirection = 0;
+    warmCardMedia(cards[index - 1]);
     startTime = Date.now();
     startX = x;
     startY = y;
@@ -1833,67 +1921,70 @@ function initPanelDragSnap() {
     card.style.transition = "";
   }
 
+
   function onMove(x, y) {
     if (!dragging) return;
     const card = activeCard();
     if (!card) return;
     dx = x - startX;
     dy = y - startY;
+    setUnderlayByDx(dx);          // <- AÑADIDO
     setCardTransform(card, dx, dy);
   }
 
   function onEnd() {
-    if (!dragging) return;
-    dragging = false;
+  if (!dragging) return;
+  dragging = false;
 
-    const card = activeCard();
-    if (!card) return;
 
-    const elapsed = Date.now() - startTime;
-    const isTap = Math.abs(dx) < 10 && Math.abs(dy) < 10 && elapsed < 280;
+  const card = activeCard();
+  if (!card) return;
 
-    if (isTap) {
-      if (card.querySelector("video")) toggleSoundActive();
-      else resetCard(card);
-      return;
-    }
+  const elapsed = Date.now() - startTime;
+  const isTap = Math.abs(dx) < 10 && Math.abs(dy) < 10 && elapsed < 280;
 
-    const THX = 90;
-    const THY = 90;
-
-    if (Math.abs(dx) > Math.abs(dy)) {
-      if (dx <= -THX) {
-        flyOut(card, -1);
-        setTimeout(() => {
-          card.style.opacity = "";
-          card.style.transform = "";
-          card.style.transition = "";
-          goNext();
-        }, 250);
-        return;
-      }
-      if (dx >= THX) {
-        flyOut(card, +1);
-        setTimeout(() => {
-          card.style.opacity = "";
-          card.style.transform = "";
-          card.style.transition = "";
-          goPrev();
-        }, 250);
-        return;
-      }
-      resetCard(card);
-      return;
-    }
-
-    if (dy <= -THY) {
-      openPanelFromCard(card);
-      resetCard(card);
-      return;
-    }
-
-    resetCard(card);
+  if (isTap) {
+    if (card.querySelector("video")) toggleSoundActive();
+    else resetCard(card);
+    return;
   }
+
+  const THX = 90;
+  const THY = 90;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx <= -THX) {
+      flyOut(card, -1);
+      setTimeout(() => {
+        card.style.opacity = "";
+        card.style.transform = "";
+        card.style.transition = "";
+        goNext();
+      }, 250);
+      return;
+    }
+    if (dx >= THX) {
+      flyOut(card, +1);
+      setTimeout(() => {
+        card.style.opacity = "";
+        card.style.transform = "";
+        card.style.transition = "";
+        goPrev();
+      }, 250);
+      return;
+    }
+    resetCard(card);
+    return;
+  }
+
+  if (dy <= -THY) {
+    openPanelFromCard(card);
+    resetCard(card);
+    return;
+  }
+
+  resetCard(card);
+}
 
   function initSwipe() {
     if (!container || cards.length === 0) return;
@@ -1914,6 +2005,9 @@ if (typeof initHeroCollapseOnScroll === "function") {
 
     if (usePointer) {
       container.addEventListener("pointerdown", (e) => {
+        // ✅ si empiezas tocando un botón/enlace, no lo tratamos como tap de la card
+        if (e.target.closest("button, a, .sound-toggle, .call-btn")) return;
+
         onStart(e.clientX, e.clientY);
         container.setPointerCapture?.(e.pointerId);
       });
@@ -1923,7 +2017,12 @@ if (typeof initHeroCollapseOnScroll === "function") {
     } else {
       container.addEventListener(
         "touchstart",
-        (e) => onStart(e.touches[0].clientX, e.touches[0].clientY),
+        (e) => {
+          // ✅ mismo bloqueo en móviles (touch)
+          if (e.target.closest("button, a, .sound-toggle, .call-btn")) return;
+
+          onStart(e.touches[0].clientX, e.touches[0].clientY);
+        },
         { passive: true }
       );
       container.addEventListener(
@@ -1935,6 +2034,8 @@ if (typeof initHeroCollapseOnScroll === "function") {
       container.addEventListener("touchcancel", onEnd, { passive: true });
     }
   }
+
+
 
   async function initAdsAndSwipe(){
     await initDynamicAds();
@@ -2286,78 +2387,75 @@ function configureCallModal(mode) {
 	}
 
 async function openFromCard(card) {
-	lastFocus = document.activeElement;
+  lastFocus = document.activeElement;
 
-	const nameRaw = card?.querySelector(".name-text")?.textContent?.trim() || "María";
-	const imgEl = card?.querySelector("img");
-	const photo = imgEl?.getAttribute("src") || "";
+  const nameRaw = card?.querySelector(".name-text")?.textContent?.trim() || "María";
+  const imgEl = card?.querySelector("img");
+  const photo = imgEl?.getAttribute("src") || "";
 
-	// 1) Leer teléfono desde data-phone de la card o del botón call-btn
-	let phone = (card?.dataset?.phone || "").trim();
-	if (!phone) {
-		phone = (card?.querySelector(".call-btn")?.dataset?.phone || "").trim();
-	}
+  // ✅ 1) Leer advertisement_id desde data-ad-id (ya lo tienes en createCardElFromAd)
+  const adId = (card?.dataset?.adId || "").trim();
 
-	// Debug: te dice exactamente qué se ha detectado
-	console.log("[VideoCall] card:", card);
-	console.log("[VideoCall] phone detectado:", phone || "(vacío)");
+  // Debug: te dice exactamente qué se ha detectado
+  console.log("[VideoCall] card:", card);
+  console.log("[VideoCall] advertisement_id detectado:", adId || "(vacío)");
 
-	currentProfile = {
-		name: nameRaw,
-		photo,
-		phone
-	};
+  currentProfile = {
+    name: nameRaw,
+    photo,
+    adId
+  };
 
-	nameEl.textContent = nameRaw;
-	avatar.src = photo || "img/foto1.jpg";
+  nameEl.textContent = nameRaw;
+  avatar.src = photo || "img/foto1.jpg";
 
-	// Si quieres, puedes avisar visualmente si falta phone (opcional):
-	// (Esto no bloquea abrir el modal, solo lo deja claro.)
- const mode = card?.querySelector(".call-btn")?.dataset?.callMode || "video";
+  const mode = card?.querySelector(".call-btn")?.dataset?.callMode || "video";
   configureCallModal(mode);
-	if (!phone) {
-		headline.textContent = "Falta el teléfono";
-		sub.textContent = "Esta usuaria no tiene teléfono asociado (data-phone). No se puede enviar la invitación por SMS.";
-	} else {
-		setState("online");
-	}
 
-	if (callRoot) {
-		callRoot.hidden = true;
-		callRoot.classList.add("hidden");
-		callRoot.setAttribute("aria-hidden", "true");
-	}
-	if (remoteVideo) remoteVideo.innerHTML = "";
-	if (localVideo) localVideo.innerHTML = "";
-
-    overlay.hidden = false;
-    overlay.setAttribute("aria-hidden", "false");
-    overlay.classList.add("is-open");
-
-    // 1) refresca coins reales (y otros campos) desde api_user_data
-    // 2) repinta header/VC/perfil con refreshSessionUI
-    await window.SoloTIASAuth?.refreshUserData?.({ silent: true });
-
-    // Fallback (por si no hay sesión / no hay endpoint / etc.)
-    window.refreshSessionUI?.();
-
-    lockScroll();
-
-  
+  // Si falta adId, avisamos (no bloquea abrir, pero sí iniciarla)
+  if (!adId) {
+    headline.textContent = "Falta el ID del anuncio";
+    sub.textContent = "Esta tarjeta no tiene advertisement_id (data-ad-id). No se puede enviar la invitación por SMS.";
+  } else {
+    setState("online");
   }
 
-	// ===============================
-	// CLICK EN BOTÓN VIDEOLLAMADA CARD
-	// ===============================
+  if (callRoot) {
+    callRoot.hidden = true;
+    callRoot.classList.add("hidden");
+    callRoot.setAttribute("aria-hidden", "true");
+  }
+  if (remoteVideo) remoteVideo.innerHTML = "";
+  if (localVideo) localVideo.innerHTML = "";
 
-	document.addEventListener("click", (e) => {
-		const btn = e.target.closest(".call-btn");
-		if (!btn) return;
-		const card = btn.closest(".swipe-card");
-		// Si no está disponible, NO abrimos el modal (requisito)
-		if (card?.dataset?.available === "false" || btn.getAttribute("aria-disabled") === "true") return;
-		openFromCard(card);
-	});
+  overlay.hidden = false;
+  overlay.setAttribute("aria-hidden", "false");
+  overlay.classList.add("is-open");
+
+  // refresca sesión (tal y como ya lo tenías)
+  await window.SoloTIASAuth?.refreshUserData?.({ silent: true });
+  window.refreshSessionUI?.();
+
+  lockScroll();
+}
+
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".call-btn");
+  if (!btn) return;
+
+  // ✅ evita que el tap de la card dispare toggleSoundActive()
+  e.preventDefault();
+  e.stopPropagation();
+
+  const card = btn.closest(".swipe-card");
+  if (card?.dataset?.available === "false" || btn.getAttribute("aria-disabled") === "true") return;
+
+  window.forceMuteActiveCardVideo?.();
+  openFromCard(card);
+});
+
+
 
 	closeBtn?.addEventListener("click", close);
 
@@ -2385,6 +2483,7 @@ async function openFromCard(card) {
     if (card?.dataset?.available === "false" || cardBtn?.getAttribute("aria-disabled") === "true") return;
 
     // abre el MISMO modal que el botón de la carta
+    window.forceMuteActiveCardVideo?.();
     openFromCard(card);
   });
 
@@ -2393,10 +2492,19 @@ async function openFromCard(card) {
 	// BOTÓN PRINCIPAL (AGORA + SMS)
 	// ===============================
 
-  // CTA principal (AGORA + SMS)
-  primaryBtn.addEventListener("click", async () => {
-    if (primaryBtn.dataset.busy === "1") return;
+// CTA principal (AGORA + SMS)
+primaryBtn.addEventListener("click", async () => {
 
+  if (primaryBtn.dataset.busy === "1") return;
+
+  // 👇 MOSTRAR OVERLAY INSTANTÁNEO
+  showConnectOverlay(
+    "Creando tu sala privada…",
+    "Un momento, estamos conectando la videollamada."
+  );
+
+  // 👇 Forzamos render antes del fetch (muy importante)
+  await new Promise(requestAnimationFrame);
     // Cancelar llamada
     if (isCalling) {
       primaryBtn.dataset.busy = "1";
@@ -2426,12 +2534,13 @@ async function openFromCard(card) {
       return;
     }
 
-    // Validar teléfono
-    if (!currentProfile.phone) {
+    // ✅ Validar advertisement_id
+    if (!currentProfile.adId) {
       headline.textContent = "No se puede iniciar la llamada";
-      sub.textContent = "No hay teléfono disponible para enviar la invitación.";
+      sub.textContent = "Falta el identificador del anuncio (advertisement_id).";
       return;
     }
+
 
     primaryBtn.dataset.busy = "1";
 
@@ -2446,9 +2555,10 @@ async function openFromCard(card) {
       const res = await fetch("/api/create_call.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          invitePhone: currentProfile.phone
-        })
+      body: JSON.stringify({
+        advertisement_id: currentProfile.adId
+      })
+
       });
 
       if (!res.ok) throw new Error("Error servidor");
@@ -2511,53 +2621,65 @@ async function openFromCard(card) {
   });
 
 function initAgoraToggleControls() {
+  const toggleMicBtn = document.getElementById("toggleMic");
+  const toggleSpeakerBtn = document.getElementById("toggleSpeaker");
 
-	const toggleMicBtn = document.getElementById("toggleMic");
-	const toggleCamBtn = document.getElementById("toggleCam");
+  if (!toggleMicBtn && !toggleSpeakerBtn) return;
 
-	if (!toggleMicBtn && !toggleCamBtn) return;
+  const micImg = toggleMicBtn?.querySelector("img");
+  const speakerImg = toggleSpeakerBtn?.querySelector("img");
 
-	// MIC
-	toggleMicBtn?.addEventListener("click", async () => {
-		if (!__agoraLocalAudioTrack) return;
+  // MIC (solo audio, no cámara)
+  toggleMicBtn?.addEventListener("click", async () => {
+    if (!__agoraLocalAudioTrack) return;
 
-		try {
-			const enabled = __agoraLocalAudioTrack.isEnabled;
+    try {
+      // leer estado real (Agora a veces expone isEnabled() o enabled)
+      const enabled =
+        (typeof __agoraLocalAudioTrack.isEnabled === "function")
+          ? __agoraLocalAudioTrack.isEnabled()
+          : (typeof __agoraLocalAudioTrack.enabled === "boolean")
+            ? __agoraLocalAudioTrack.enabled
+            : true;
 
-			await __agoraLocalAudioTrack.setEnabled(!enabled);
+      const next = !enabled;
+      await __agoraLocalAudioTrack.setEnabled(next);
 
-			if (enabled) {
-				toggleMicBtn.classList.add("is-off");
-				toggleMicBtn.textContent = "Mic apagado";
-			} else {
-				toggleMicBtn.classList.remove("is-off");
-				toggleMicBtn.textContent = "Mic encendido";
-			}
-		} catch (err) {
-			console.error("Error toggling mic:", err);
-		}
-	});
+      if (!next) {
+        toggleMicBtn.classList.add("is-off");
+        toggleMicBtn.setAttribute("aria-pressed", "true");
+        if (micImg) micImg.src = "/img/mic-off.svg";
+      } else {
+        toggleMicBtn.classList.remove("is-off");
+        toggleMicBtn.setAttribute("aria-pressed", "false");
+        if (micImg) micImg.src = "/img/mic-on.svg";
+      }
+    } catch (err) {
+      console.error("Error toggling mic:", err);
+    }
+  });
 
-	// CAM
-	toggleCamBtn?.addEventListener("click", async () => {
-		if (!__agoraLocalVideoTrack) return;
+  // ALTAVOZ (mute/unmute audio remoto)
+  toggleSpeakerBtn?.addEventListener("click", () => {
+    __agoraSpeakerMuted = !__agoraSpeakerMuted;
 
-		try {
-			const enabled = __agoraLocalVideoTrack.isEnabled;
-			await __agoraLocalVideoTrack.setEnabled(!enabled);
+    if (__agoraSpeakerMuted) {
+      toggleSpeakerBtn.classList.add("is-off");
+      toggleSpeakerBtn.setAttribute("aria-pressed", "true");
+      if (speakerImg) speakerImg.src = "/img/speaker-off.svg";
+    } else {
+      toggleSpeakerBtn.classList.remove("is-off");
+      toggleSpeakerBtn.setAttribute("aria-pressed", "false");
+      if (speakerImg) speakerImg.src = "/img/speaker-on.svg";
+    }
 
-			if (enabled) {
-				toggleCamBtn.classList.add("is-off");
-				toggleCamBtn.textContent = "Cam apagada";
-			} else {
-				toggleCamBtn.classList.remove("is-off");
-				toggleCamBtn.textContent = "Cam encendida";
-			}
-		} catch (err) {
-			console.error("Error toggling camera:", err);
-		}
-	});
+    if (__agoraRemoteAudioTrack?.setVolume) {
+      __agoraRemoteAudioTrack.setVolume(__agoraSpeakerMuted ? 0 : 100);
+    }
+  });
 }
+
+
 
 // Llamar una vez para activar los handlers
 initAgoraToggleControls();
@@ -2585,6 +2707,138 @@ let __agoraClient = null;
 let __agoraLocalAudioTrack = null;
 let __agoraLocalVideoTrack = null;
 let __agoraJoined = false;
+let __agoraSession = null;
+let __agoraLeaveSent = false;
+let __agoraRemoteAudioTrack = null;
+let __agoraSpeakerMuted = false;
+
+
+// --- FIX real: evitar que se rompa JS + forzar repaint en Chrome Android ---
+function hardRepaintEl(el) {
+  if (!el) return;
+
+  // Forzar repaint sin “parpadeo” visible
+  const prev = el.style.transform;
+  el.style.transform = "translateZ(0)";
+  void el.offsetHeight; // fuerza reflow
+  el.style.transform = prev;
+}
+
+function hardRepaintTopbar() {
+  const topbar = document.querySelector(".topbar");
+  if (!topbar) return;
+
+  // Fuerza reflow
+  void topbar.offsetHeight;
+
+  // Forzar capa en topbar
+  const prevTop = topbar.style.transform;
+  topbar.style.transform = "translate3d(0,0,0)";
+
+  // Forzar repintado también de los hijos (botones derecha/izquierda)
+  const left = topbar.querySelector(".left");
+  const right = topbar.querySelector(".right");
+
+  const prevLeft = left ? left.style.transform : "";
+  const prevRight = right ? right.style.transform : "";
+
+  if (left) left.style.transform = "translateZ(0)";
+  if (right) right.style.transform = "translateZ(0)";
+
+  requestAnimationFrame(() => {
+    if (left) left.style.transform = prevLeft || "";
+    if (right) right.style.transform = prevRight || "";
+    topbar.style.transform = prevTop || "";
+  });
+}
+
+function hardRepaintBottomNav() {
+  const nav = document.querySelector(".bottom-nav");
+  if (!nav) return;
+
+  void nav.offsetHeight;
+
+  const prev = nav.style.transform;
+  nav.style.transform = "translate3d(0,0,0)";
+  requestAnimationFrame(() => {
+    nav.style.transform = prev || "";
+  });
+}
+
+// Al volver atrás (BFCache) Chrome Android a veces no repinta fixed
+window.addEventListener("pageshow", () => {
+  hardRepaintTopbar();
+  hardRepaintBottomNav();
+  // doble RAF ayuda mucho en Android
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    hardRepaintTopbar();
+    hardRepaintBottomNav();
+  }));
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    hardRepaintTopbar();
+    hardRepaintBottomNav();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      hardRepaintTopbar();
+      hardRepaintBottomNav();
+    }));
+  }
+});
+
+
+
+function agoraNowStamp() {
+  const d = new Date();
+  return { iso: d.toISOString(), ms: d.getTime() };
+}
+
+function getUserLlamametuIdSafe() {
+  // 1) si tú lo guardas en algún sitio, úsalo
+  // 2) fallback vacío (no rompe)
+  return (window.__llamametu_user_id ? String(window.__llamametu_user_id) : "");
+}
+
+async function callLocalAgoraApi(path, payload) {
+  try {
+    const r = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    // No bloqueamos la llamada por errores de log
+    return await r.json().catch(() => ({}));
+  } catch {
+    return {};
+  }
+}
+// Detectar cierre de pestaña / refresh
+window.addEventListener("beforeunload", () => {
+
+  if (__agoraSession && !__agoraLeaveSent) {
+
+    __agoraLeaveSent = true;
+
+    const t = agoraNowStamp();
+
+    if (navigator.sendBeacon) {
+      const data = new Blob(
+        [JSON.stringify({
+          user_llamametu_id: getUserLlamametuIdSafe(),
+          channel: __agoraSession.channel,
+          caller_uid: __agoraSession.uid,
+          event_at_iso: t.iso,
+          event_at_ms: t.ms,
+          leave_reason: "unload",
+        })],
+        { type: "application/json" }
+      );
+
+      navigator.sendBeacon("/api/agora_leave_channel.php", data);
+    }
+  }
+});
 
 async function startAgoraCall(params) {
   const appId = params && params.appId ? String(params.appId).trim() : "";
@@ -2592,81 +2846,156 @@ async function startAgoraCall(params) {
   const token = params && params.token ? String(params.token).trim() : "";
   const uid = params && typeof params.uid !== "undefined" ? params.uid : null;
 
-  if (!appId || !channel || !token || uid === null) {
-    throw new Error("startAgoraCall: faltan appId/channel/token/uid");
-  }
-
-  if (!window.AgoraRTC) {
-    throw new Error("AgoraRTC no está disponible. Carga el Agora Web SDK en index.html.");
-  }
-
-  if (__agoraJoined) {
-    await stopAgoraCall();
-  }
-
-  const remoteContainer = document.getElementById("remoteVideo");
-  const localContainer = document.getElementById("localVideo");
-
-  if (!remoteContainer || !localContainer) {
-    throw new Error("No existen #remoteVideo o #localVideo en el DOM.");
-  }
-
-  remoteContainer.innerHTML = "";
-  localContainer.innerHTML = "";
-
-  __agoraClient = window.AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
-
-  __agoraClient.on("user-published", async (user, mediaType) => {
-    await __agoraClient.subscribe(user, mediaType);
-
-    if (mediaType === "video" && user.videoTrack) {
-      const remotePlayer = document.createElement("div");
-      remotePlayer.id = `agora-remote-${user.uid}`;
-      remotePlayer.style.width = "100%";
-      remotePlayer.style.height = "100%";
-      remoteContainer.innerHTML = "";
-      remoteContainer.appendChild(remotePlayer);
-
-      user.videoTrack.play(remotePlayer.id);
+  try {
+    if (!appId || !channel || !token || uid === null) {
+      throw new Error("startAgoraCall: faltan appId/channel/token/uid");
     }
 
-    if (mediaType === "audio" && user.audioTrack) {
-      user.audioTrack.play();
+    if (!window.AgoraRTC) {
+      throw new Error("AgoraRTC no está disponible. Carga el Agora Web SDK en index.html.");
     }
-  });
 
-  __agoraClient.on("user-unpublished", (user) => {
-    const el = document.getElementById(`agora-remote-${user.uid}`);
-    if (el && el.parentNode) el.parentNode.removeChild(el);
-  });
+    if (__agoraJoined) {
+      await stopAgoraCall();
+    }
 
-  __agoraClient.on("user-left", (user) => {
-    const el = document.getElementById(`agora-remote-${user.uid}`);
-    if (el && el.parentNode) el.parentNode.removeChild(el);
-  });
+    const remoteContainer = document.getElementById("remoteVideo");
+    const localContainer = document.getElementById("localVideo");
 
-  await __agoraClient.join(appId, channel, token, uid);
-  __agoraJoined = true;
+    if (!remoteContainer || !localContainer) {
+      throw new Error("No existen #remoteVideo o #localVideo en el DOM.");
+    }
 
-  __agoraLocalAudioTrack = await window.AgoraRTC.createMicrophoneAudioTrack();
-  __agoraLocalVideoTrack = await window.AgoraRTC.createCameraVideoTrack();
+    remoteContainer.innerHTML = "";
+    localContainer.innerHTML = "";
 
-  await __agoraClient.publish([__agoraLocalAudioTrack, __agoraLocalVideoTrack]);
+    __agoraClient = window.AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
-  const localPlayer = document.createElement("div");
-  localPlayer.id = "agora-local-player";
-  localPlayer.style.width = "100%";
-  localPlayer.style.height = "100%";
-  localContainer.innerHTML = "";
-  localContainer.appendChild(localPlayer);
+    __agoraClient.on("user-published", async (user, mediaType) => {
+      await __agoraClient.subscribe(user, mediaType);
 
-  __agoraLocalVideoTrack.play(localPlayer.id);
+      if (mediaType === "video" && user.videoTrack) {
+        const remotePlayer = document.createElement("div");
+        remotePlayer.id = `agora-remote-${user.uid}`;
+        remotePlayer.style.width = "100%";
+        remotePlayer.style.height = "100%";
+        remoteContainer.innerHTML = "";
+        remoteContainer.appendChild(remotePlayer);
 
-  return true;
+        user.videoTrack.play(remotePlayer.id);
+      }
+
+      if (mediaType === "audio" && user.audioTrack) {
+        __agoraRemoteAudioTrack = user.audioTrack;
+
+        // aplicar estado actual del altavoz
+        try {
+          if (typeof __agoraRemoteAudioTrack.setVolume === "function") {
+            __agoraRemoteAudioTrack.setVolume(__agoraSpeakerMuted ? 0 : 100);
+          }
+        } catch (e) {}
+
+        __agoraRemoteAudioTrack.play();
+      }
+    });
+
+    __agoraClient.on("user-unpublished", (user, mediaType) => {
+
+      // 🔊 Si solo dejó de publicar audio (mic apagado)
+      if (mediaType === "audio") {
+        __agoraRemoteAudioTrack = null;
+        return; // 👈 CLAVE: no tocar el vídeo
+      }
+
+      // 🎥 Solo si dejó de publicar vídeo
+      if (mediaType === "video") {
+        const el = document.getElementById(`agora-remote-${user.uid}`);
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      }
+    });
+
+    // ✅ SI EL OTRO CUELGA/SALTA DEL CANAL, YO TAMBIÉN CUELGO
+    __agoraClient.on("user-left", async (user) => {
+      // 👇 limpiar siempre al salir
+      __agoraRemoteAudioTrack = null;
+
+      const el = document.getElementById(`agora-remote-${user.uid}`);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+
+      // Si ya no estoy en llamada (o ya se está cerrando), no hago nada
+      if (!__agoraJoined) return;
+
+      try {
+        // esto hace leave + limpia tracks + vacía contenedores (tu stopAgoraCall)
+        await stopAgoraCall("peer_left");
+      } catch (e) {
+        console.error("[auto-hangup] stopAgoraCall error:", e);
+      }
+
+      // cerrar UI si existe esta función en tu app (no rompe si no existe)
+      try {
+        if (typeof exitCallAndReturnHome === "function") {
+          exitCallAndReturnHome();
+        }
+      } catch (e) {}
+    });
+
+    await __agoraClient.join(appId, channel, token, uid);
+    __agoraJoined = true;
+
+    __agoraLocalAudioTrack = await window.AgoraRTC.createMicrophoneAudioTrack();
+    __agoraLocalVideoTrack = await window.AgoraRTC.createCameraVideoTrack();
+
+    await __agoraClient.publish([__agoraLocalAudioTrack, __agoraLocalVideoTrack]);
+
+    __agoraSession = { appId, channel, uid };
+    __agoraLeaveSent = false;
+
+    const tJoin = agoraNowStamp();
+    callLocalAgoraApi("/api/agora_join_channel.php", {
+      user_llamametu_id: getUserLlamametuIdSafe(),
+      channel,
+      caller_uid: uid,
+      event_at_iso: tJoin.iso,
+      event_at_ms: tJoin.ms,
+    });
+
+    const localPlayer = document.createElement("div");
+    localPlayer.id = "agora-local-player";
+    localPlayer.style.width = "100%";
+    localPlayer.style.height = "100%";
+    localContainer.innerHTML = "";
+    localContainer.appendChild(localPlayer);
+
+    __agoraLocalVideoTrack.play(localPlayer.id);
+
+    return true;
+  } finally {
+    // ✅ Se oculta SIEMPRE (éxito o error)
+    hideConnectOverlay();
+  }
 }
 
-async function stopAgoraCall() {
+
+ 
+
+async function stopAgoraCall(reason = "manual") {
   try {
+    // Enviar LEAVE solo una vez
+    if (__agoraSession && !__agoraLeaveSent) {
+      __agoraLeaveSent = true;
+
+      const tLeave = agoraNowStamp();
+      callLocalAgoraApi("/api/agora_leave_channel.php", {
+        user_llamametu_id: getUserLlamametuIdSafe(),
+        channel: __agoraSession.channel,
+        caller_uid: __agoraSession.uid,
+        event_at_iso: tLeave.iso,
+        event_at_ms: tLeave.ms,
+        leave_reason: reason,
+      });
+    }
+
     if (__agoraLocalAudioTrack) {
       __agoraLocalAudioTrack.stop();
       __agoraLocalAudioTrack.close();
@@ -2685,6 +3014,7 @@ async function stopAgoraCall() {
   } finally {
     __agoraJoined = false;
     __agoraClient = null;
+    __agoraSession = null;
 
     const remoteContainer = document.getElementById("remoteVideo");
     const localContainer = document.getElementById("localVideo");
@@ -2692,6 +3022,7 @@ async function stopAgoraCall() {
     if (localContainer) localContainer.innerHTML = "";
   }
 }
+
 
 
 function exitCallAndReturnHome() {
@@ -3235,6 +3566,7 @@ function exitCallAndReturnHome() {
       }
 
       preloginUserId = String(r.user_llamametu_id);
+      window.__llamametu_user_id = preloginUserId;
 
       // pasar a step2
       setStep(2);
@@ -3310,6 +3642,21 @@ function exitCallAndReturnHome() {
   const panel = document.getElementById("hdrMenuPanel");
   if(!wrap || !btn || !panel) return;
 
+  // Botones fijos en cabecera (siempre visibles)
+  const phoneTopBtn = document.getElementById("hdrPhoneBtn");
+  const videoTopBtn = document.getElementById("hdrVideoBtn");
+
+  phoneTopBtn?.addEventListener("click", (e)=>{
+    e.preventDefault();
+    window.reloadAdsWithService?.("webs");
+  });
+
+  videoTopBtn?.addEventListener("click", (e)=>{
+    e.preventDefault();
+    window.reloadAdsWithService?.("videocalls");
+  });
+
+
   function open(){
     wrap.classList.add("is-open");
     panel.hidden = false;
@@ -3336,19 +3683,6 @@ function exitCallAndReturnHome() {
   panel.addEventListener("click",(e)=>{
     const b = e.target.closest("button");
     if(!b) return;
-
-    // ✅ Filtros de anuncios (una sola acción por click)
-    if (b.id === "hdrPhoneBtn") {
-      window.reloadAdsWithService?.("webs");
-      close();
-      return;
-    }
-
-    if (b.id === "hdrVideoBtn") {
-      window.reloadAdsWithService?.("videocalls");
-      close();
-      return;
-    }
 
     if (b.id === "hdrListadosBtn") {
       const overlay = document.getElementById("listadosOverlay");
@@ -3400,6 +3734,83 @@ function exitCallAndReturnHome() {
     }
   });
 })();
+
+(function initHeaderCollapsedMenu(){
+  const details = document.getElementById("hdrCollapsedMenu");
+  if (!details) return;
+
+  function closeMenu(){
+    details.removeAttribute("open");
+  }
+
+  // Helper: engancha click si existe
+  function on(id, fn){
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("click", (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      fn(e);
+      closeMenu();
+    });
+  }
+
+  // --- Localización: reutiliza EXACTAMENTE la lógica ya existente del gpsBtn ---
+  // Tu geo init ya engancha gpsBtn por id="gpsBtn" y hace initGeoOnLoad(), etc. :contentReference[oaicite:4]{index=4}
+  // Para el botón “logged” (si lo usas), lo hacemos disparar el click del gpsBtn real:
+  on("gpsBtnLogged", () => {
+    document.getElementById("gpsBtn")?.click();
+  });
+
+  // --- Teléfono / Vídeo: misma lógica que antes ---
+  on("hdrPhoneBtn", () => window.reloadAdsWithService?.("webs"));
+  on("hdrVideoBtn", () => window.reloadAdsWithService?.("videocalls"));
+
+  // En logged (si están):
+  on("hdrPhoneBtnLogged", () => window.reloadAdsWithService?.("webs"));
+  on("hdrVideoBtnLogged", () => window.reloadAdsWithService?.("videocalls"));
+
+  // --- Listados / Fichas / Perfil: misma lógica que antes en el menú ---
+  on("hdrListadosBtn", () => {
+    const overlay = document.getElementById("listadosOverlay");
+    if (!overlay) return;
+
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    requestAnimationFrame(() => overlay.classList.add("is-open"));
+    document.documentElement.classList.add("no-scroll");
+    document.body.classList.add("no-scroll");
+
+    window.initListadosSwipe?.();
+    window.bindListadosInfiniteScroll?.();
+    window.loadListados?.({ reset: true });
+  });
+
+  on("hdrFichasBtn", () => {
+    // usa tu función existente
+    window.goToStore ? window.goToStore() : (typeof goToStore === "function" ? goToStore() : null);
+  });
+
+  on("hdrPerfilBtn", () => {
+    window.openProfileModal?.();
+  });
+
+  // Cierra al clicar fuera
+  document.addEventListener("click", (e)=>{
+    if (!details.hasAttribute("open")) return;
+    if (e.target.closest("#hdrCollapsedMenu")) return;
+    closeMenu();
+  });
+
+  // Cierra con ESC
+  document.addEventListener("keydown", (e)=>{
+    if (e.key === "Escape" && details.hasAttribute("open")) {
+      e.preventDefault();
+      closeMenu();
+    }
+  });
+})();
+
 
 
 
@@ -3726,6 +4137,8 @@ function getSession(){
 window.refreshSessionUI = function refreshSessionUI(){
   const sess = getSession();
   const logged = !!sess;
+  // --- Mostrar grupo logged/guest del menú colapsado ---
+  document.documentElement.classList.toggle("is-logged", logged);
   const coins = sess?.user_data?.coins;
   const phone = sess?.user_data?.phone;
   const code  = sess?.user_data?.virtual_number;
@@ -3735,6 +4148,22 @@ window.refreshSessionUI = function refreshSessionUI(){
   const perfilBtn = document.getElementById("hdrPerfilBtn");
   if (fichasBtn) fichasBtn.hidden = !logged;
   if (perfilBtn) perfilBtn.hidden = !logged;
+
+  // --- Botón menú (3 puntos) solo si está logueado ---
+  const hdrMenuWrap = document.querySelector(".hdr-menu");
+  const hdrMenuBtn = document.getElementById("hdrMenuBtn");
+  const hdrMenuPanel = document.getElementById("hdrMenuPanel");
+
+  if (hdrMenuWrap) hdrMenuWrap.hidden = !logged;
+  if (hdrMenuBtn) hdrMenuBtn.hidden = !logged;
+
+  // si no está logueado, cerramos/ocultamos el panel por seguridad
+  if (!logged && hdrMenuPanel) {
+    hdrMenuPanel.hidden = true;
+    hdrMenuWrap?.classList?.remove("is-open");
+    hdrMenuBtn?.setAttribute?.("aria-expanded","false");
+  }
+
 
   // --- VC modal buttons (mensaje / coins info) ---
   const vcMsgBtn   = document.getElementById("vcMsgBtn");
@@ -3876,23 +4305,28 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function open(){
-  if (!window.SoloTIASAuth?.isLogged?.()) {
-    window.openPhoneAuthModal?.();
-    return;
+    if (!window.SoloTIASAuth?.isLogged?.()) {
+      window.openPhoneAuthModal?.();
+      return;
+    }
+
+    // ✅ Abrir inmediatamente con lo que haya en sesión
+    paintFromSession();
+
+    overlay.hidden = false;
+    requestAnimationFrame(()=> overlay.classList.add("is-open"));
+    overlay.setAttribute("aria-hidden","false");
+
+    lock();
+
+    // ✅ Refrescar coins en segundo plano (sin bloquear apertura)
+    window.SoloTIASAuth?.refreshUserData?.({ silent: true })
+      .then(() => {
+        paintFromSession(); // actualiza datos cuando lleguen
+      })
+      .catch(() => {});
   }
 
-  // 🔄 refresca coins reales (y otros campos) desde api_user_data
-  await window.SoloTIASAuth?.refreshUserData?.({ silent: true });
-
-  // pinta ya con la sesión actualizada
-  paintFromSession();
-
-  overlay.hidden = false;
-  requestAnimationFrame(()=> overlay.classList.add("is-open"));
-  overlay.setAttribute("aria-hidden","false");
-
-  lock();
-}
 
 
   function close(){
@@ -3976,6 +4410,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
 })();
+
 
 // ===============================
 // CLOSE ALL OVERLAYS + GO STORE
@@ -4288,3 +4723,71 @@ function goToStore() {
   window.loadListados = load;
   window.bindListadosInfiniteScroll = bindInfiniteScroll;
 })();
+
+
+(function initGestureCoachOnce(){
+  const KEY = "solotias_gesture_coach_v1";
+  const el = document.getElementById("gestureCoach");
+  const swipeContainer = document.getElementById("swipeContainer");
+
+  if (!el || !swipeContainer) return;
+  if (localStorage.getItem(KEY) === "1") return;
+
+  function show(){
+    el.hidden = false;
+    el.setAttribute("aria-hidden", "false");
+  }
+
+  function hideForever(){
+    if (localStorage.getItem(KEY) === "1") return;
+
+    localStorage.setItem(KEY, "1");
+    el.hidden = true;
+    el.setAttribute("aria-hidden", "true");
+
+    swipeContainer.removeEventListener("pointerdown", onMoveStart);
+    swipeContainer.removeEventListener("touchstart", onMoveStart);
+  }
+
+  function onMoveStart(e){
+    // Solo ocultar si realmente empieza un gesto sobre una card
+    if (e.target.closest(".swipe-card")) {
+      hideForever();
+    }
+  }
+
+  // Mostrar tras pequeño delay cuando todo esté renderizado
+  setTimeout(show, 800);
+
+  // Escuchar solo gestos sobre cartas
+  swipeContainer.addEventListener("pointerdown", onMoveStart, { passive:true });
+  swipeContainer.addEventListener("touchstart", onMoveStart, { passive:true });
+
+})();
+
+function showConnectOverlay(title, sub) {
+  const el = document.getElementById("connectOverlay");
+  if (!el) return;
+
+  const t = el.querySelector(".connect-ov__title");
+  const s = el.querySelector(".connect-ov__sub");
+
+  if (t && title) t.textContent = title;
+  if (s && sub) s.textContent = sub;
+
+  el.hidden = false;
+  el.setAttribute("aria-hidden", "false");
+  document.documentElement.classList.add("no-scroll");
+  document.body.classList.add("no-scroll");
+}
+
+function hideConnectOverlay() {
+  const el = document.getElementById("connectOverlay");
+  if (!el) return;
+
+  el.hidden = true;
+  el.setAttribute("aria-hidden", "true");
+  document.documentElement.classList.remove("no-scroll");
+  document.body.classList.remove("no-scroll");
+}
+

@@ -1,6 +1,8 @@
 <?php
 require_once __DIR__ . "/config.php";
 
+session_start();
+
 header("Content-Type: application/json");
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
@@ -40,17 +42,16 @@ function callParseFunction($functionName, $payload) {
 
     $decoded = json_decode($response, true);
     if (!$decoded) {
-    return ["ok" => false, "error" => "Invalid JSON from Parse"];
+        return ["ok" => false, "error" => "Invalid JSON from Parse"];
     }
 
     // Parse suele envolver en { "result": ... }
     if (isset($decoded["result"]) && is_array($decoded["result"])) {
-    return $decoded["result"];
+        return $decoded["result"];
     }
 
     return $decoded;
-
-    }
+}
 
 /* =========================
    PRELOGIN
@@ -84,6 +85,29 @@ if ($action === "login") {
         "user_llamametu_id" => $input["user_llamametu_id"],
         "verification_code" => $input["verification_code"]
     ]);
+
+    // ✅ NUEVO: si el login es correcto, guardar el user id en sesión PHP (server-side)
+    if (is_array($response) && (($response["ok"] ?? false) === true) && (($response["successful_verification"] ?? false) === true)) {
+
+        $sessionUserId = '';
+
+        // Preferimos el objectId real si viene en user_data
+        if (isset($response["user_data"]) && is_array($response["user_data"]) && isset($response["user_data"]["objectId"])) {
+            $sessionUserId = trim((string)$response["user_data"]["objectId"]);
+        }
+
+        // Fallback: el id que vino en el request (compatibilidad)
+        if ($sessionUserId === '') {
+            $sessionUserId = trim((string)$input["user_llamametu_id"]);
+        }
+
+        if ($sessionUserId !== '') {
+            session_regenerate_id(true);
+            $_SESSION["user_llamametu_id"] = $sessionUserId;
+            $_SESSION["logged_in"] = true;
+            $_SESSION["logged_in_at"] = time();
+        }
+    }
 
     echo json_encode($response);
     exit;

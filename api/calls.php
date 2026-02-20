@@ -1,18 +1,10 @@
 <?php
-/**
- * SoloTIAS - Proxy Cloud Function (Back4App/Parse)
- *
- * Endpoint: POST /api/calls.php
- * Body JSON:
- *  - user_llamametu_id (string)  [required]
- *  - page (int)                 [optional, default 1]
- *
- * Lee claves de /api/config.php (NO poner aquí).
- * Llama a Parse Cloud Function: api_solotias_get_calls
- */
-
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+
+require_once __DIR__ . '/config.php';
+
+session_start();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
   http_response_code(405);
@@ -24,89 +16,63 @@ $raw = file_get_contents('php://input');
 $payload = json_decode($raw, true);
 if (!is_array($payload)) $payload = [];
 
-$user_llamametu_id = isset($payload['user_llamametu_id']) ? trim((string)$payload['user_llamametu_id']) : '';
+// ✅ NUEVO: el user id se obtiene exclusivamente desde sesión
+$user_llamametu_id = isset($_SESSION['user_llamametu_id'])
+  ? trim((string)$_SESSION['user_llamametu_id'])
+  : '';
+
 $page = isset($payload['page']) ? (int)$payload['page'] : 1;
 if ($page < 1) $page = 1;
 
+// ✅ NUEVO: si no hay sesión válida → 401
 if ($user_llamametu_id === '') {
-  http_response_code(400);
-  echo json_encode(["ok" => false, "error" => "missing_user_llamametu_id"]);
+  http_response_code(401);
+  echo json_encode(["ok" => false, "error" => "session_required"]);
   exit;
 }
 
-// Cargar config (claves)
-$cfgFile = __DIR__ . '/config.php';
-if (!file_exists($cfgFile)) {
-  http_response_code(500);
-  echo json_encode(["ok" => false, "error" => "missing_config"]);
-  exit;
-}
-require_once $cfgFile;
+// ================================
+// Llamada a Parse Cloud
+// ================================
 
-// Soportamos constants o variables comunes
-$appId = defined('PARSE_APP_ID') ? PARSE_APP_ID : (defined('APP_ID') ? APP_ID : ($parse_app_id ?? $APP_ID ?? null));
-$restKey = defined('PARSE_REST_KEY') ? PARSE_REST_KEY : (defined('REST_API_KEY') ? REST_API_KEY : ($parse_rest_key ?? $REST_API_KEY ?? $REST_KEY ?? null));
-$serverUrl = defined('PARSE_SERVER_URL') ? PARSE_SERVER_URL : ($parse_server_url ?? $PARSE_SERVER_URL ?? null);
+$cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_solotias_calls';
 
-if (!$appId || !$restKey || !$serverUrl) {
-  http_response_code(500);
-  echo json_encode(["ok" => false, "error" => "config_incomplete"]);
-  exit;
-}
+$bodyToParse = json_encode([
+  "user_llamametu_id" => $user_llamametu_id,
+  "page" => $page
+], JSON_UNESCAPED_UNICODE);
 
-$serverUrl = rtrim($serverUrl, '/');
-$fnName = 'api_solotias_get_calls';
-$endpoint = $serverUrl . '/functions/' . $fnName;
-
-$params = [
-  'user_llamametu_id' => $user_llamametu_id,
-  'page' => $page,
-];
-
-$ch = curl_init($endpoint);
+$ch = curl_init($cloudUrl);
 curl_setopt_array($ch, [
   CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_TIMEOUT => 12,
+  CURLOPT_CONNECTTIMEOUT => 6,
   CURLOPT_POST => true,
   CURLOPT_HTTPHEADER => [
-    'X-Parse-Application-Id: ' . $appId,
-    'X-Parse-REST-API-Key: ' . $restKey,
     'Content-Type: application/json',
+    'X-Parse-Application-Id: ' . PARSE_APP_ID,
+    'X-Parse-REST-API-Key: ' . PARSE_REST_KEY,
   ],
-  CURLOPT_POSTFIELDS => json_encode($params),
-  CURLOPT_TIMEOUT => 20,
+  CURLOPT_POSTFIELDS => $bodyToParse,
+  CURLOPT_SSL_VERIFYPEER => true,
+  CURLOPT_SSL_VERIFYHOST => 2,
 ]);
 
-$out = curl_exec($ch);
-$http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$res = curl_exec($ch);
+$http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $err = curl_error($ch);
 curl_close($ch);
 
-if ($out === false) {
-  http_response_code(502);
-  echo json_encode(["ok" => false, "error" => "proxy_curl_error", "detail" => $err]);
-  exit;
-}
-
-// Parse Cloud devuelve { result: {...} }
-$decoded = json_decode($out, true);
-if (!is_array($decoded)) {
-  http_response_code(502);
-  echo json_encode(["ok" => false, "error" => "proxy_bad_json", "http" => $http]);
-  exit;
-}
-
-if ($http < 200 || $http >= 300) {
-  http_response_code(502);
+if ($res === false || $http >= 400) {
+  http_response_code(500);
   echo json_encode([
     "ok" => false,
-    "error" => "proxy_upstream_error",
-    "http" => $http,
-    "upstream" => $decoded,
+    "error" => "parse_call_failed",
+    "httpCode" => $http,
+    "details" => $err,
+    "cloudResponse" => $res
   ]);
   exit;
 }
 
-$result = $decoded['result'] ?? $decoded;
-
-// devolvemos tal cual el result (para que frontend use ok/page/calls)
-echo json_encode($result);
+echo $res;
