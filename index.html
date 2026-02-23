@@ -22,6 +22,19 @@
 	<link rel="stylesheet" href="/css/styles.css?v=19">
 	</head>
 	<body>
+	<div class="desktop-layout">
+	<div class="desktop-phone">
+		<div class="desktop-phone__frame">
+		<div class="desktop-phone__screen">
+	<!-- Overlay orientación (solo móvil/PWA) -->
+	<div id="rotateOverlay" class="rotate-overlay" aria-hidden="true">
+	<div class="rotate-box">
+		<div class="rotate-title">Solo en vertical</div>
+		<div class="rotate-text">
+		SoloTIAS solo se puede usar en modo vertical. Gira tu móvil a modo retrato para continuar.
+		</div>
+	</div>
+	</div>
 		<header class="topbar">
 		<div class="left">
 
@@ -556,6 +569,43 @@
 						</div>
 					</div>
 				</div>
+
+
+				<div class="desktop-swipe-controls" hidden>
+				<button id="deskPrev" class="desk-swipe-btn" type="button">
+					<span class="desk-swipe-ic">
+					<svg viewBox="0 0 24 24" width="18" height="18">
+						<path d="M14.5 5.5L8 12l6.5 6.5" fill="none"
+						stroke="currentColor" stroke-width="2.5"
+						stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+					</span>
+					Anterior
+				</button>
+
+				<button id="deskProfile" class="desk-swipe-btn desk-swipe-btn--primary" type="button">
+					<span class="desk-swipe-ic">
+					<svg viewBox="0 0 24 24" width="18" height="18">
+						<path d="M6.5 14.5L12 9l5.5 5.5" fill="none"
+						stroke="currentColor" stroke-width="2.5"
+						stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+					</span>
+					Perfil
+				</button>
+
+				<button id="deskNext" class="desk-swipe-btn" type="button">
+					Siguiente
+					<span class="desk-swipe-ic">
+					<svg viewBox="0 0 24 24" width="18" height="18">
+						<path d="M9.5 5.5L16 12l-6.5 6.5" fill="none"
+						stroke="currentColor" stroke-width="2.5"
+						stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+					</span>
+				</button>
+				</div>
+
 			</section>
 		</main>
 		<!-- Panel full-screen (swipe ↑) -->
@@ -563,8 +613,12 @@
 			<div class="panel-backdrop" id="panelBackdrop">
 			</div>
 			<div aria-modal="true" class="panel-sheet" id="panelSheet" role="dialog">
-				<div class="panel-hero" id="panelHero">
-				</div>
+			<div class="panel-hero" id="panelHero">
+			<!-- Desktop close (solo escritorio) -->
+			<button id="panelDesktopClose" class="panel-desktop-close" type="button" aria-label="Cerrar">
+				<span aria-hidden="true">×</span>
+			</button>
+			</div>
 				<div class="panel-body">
 					<div class="profile-head">
 						<div class="profile-name">
@@ -855,9 +909,10 @@
 				<span class="auth-brand-black">Solo</span><span class="auth-brand-pink">TIAS</span>
 			</div>
 			<button aria-label="Cerrar" class="auth-close" id="profileCloseBtn" type="button">
-				<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24">
-				<path fill="currentColor" d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4-6.3-6.3-6.3 6.3-1.4-1.4L10.6 12 4.3 5.7 5.7 4.3l6.3 6.3 6.3-6.3z"></path>
-				</svg>
+			<svg width="20px" height="20px" viewBox="-0.5 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg">
+			<path d="M3 21.32L21 3.32001" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+			<path d="M3 3.32001L21 21.32" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
 			</button>
 			</header>
 
@@ -881,7 +936,7 @@
 				</div>
 
 				<div class="profile-headline">
-				Tu teléfono en secreto. Tu deseo, completamente libre.
+				Vive tus fantasías más ardientes sin que nadie lo sepa. Todo encriptado, llamadas y videollamadas en total discreción.
 				</div>
 
 				<!-- Fichas -->
@@ -913,22 +968,15 @@
 				<button class="profile-storeBtn" id="profileStoreBtn" type="button">Tienda de fichas</button>
 				</div>
 
-				<!-- Enlaces legales -->
-				<div class="profile-legal">
-				<button class="profile-legalLink" type="button" data-open-policies="true">Políticas de privacidad</button>
-				<button class="profile-legalLink" type="button" data-open-policies="true">Términos de uso</button>
-				<button class="profile-legalLink" type="button" data-open-policies="true">Política de cookies</button>
-				</div>
+					<!-- Enlaces legales -->
+					<div class="profile-legal">
+					<button class="profile-legalLink" type="button" data-open-policies="true">Políticas de privacidad</button>
+					<button class="profile-legalLink" type="button" data-open-policies="true">Términos de uso</button>
+					<button class="profile-legalLink" type="button" data-open-policies="true">Política de cookies</button>
 
-				<!-- Logout -->
-				<button class="profile-logout" id="profileLogoutBtn" type="button">
-				<span class="profile-logoutIco" aria-hidden="true">
-					<svg aria-hidden="true" viewBox="0 0 24 24">
-					<path fill="currentColor" d="M10 17v-2h4v-6h-4V7l-5 5 5 5zm8-14h-8a2 2 0 0 0-2 2v2h2V5h8v14h-8v-2H8v2a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z"/>
-					</svg>
-				</span>
-				<span class="profile-logoutText">Abandonar</span>
-				</button>
+					<!-- Logout (mismo estilo que enlaces, misma acción por mantener el id) -->
+					<button class="profile-legalLink" id="profileLogoutBtn" type="button">Cerrar y salir</button>
+					</div>
 
 			</div>
 			</div>
@@ -946,11 +994,9 @@
 
 			<button aria-label="Cerrar" class="auth-close" id="authCloseBtn" type="button">
 				<!-- X SVG -->
-				<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24">
-				<path
-					fill="currentColor"
-					d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4-6.3-6.3-6.3 6.3-1.4-1.4L10.6 12 4.3 5.7 5.7 4.3l6.3 6.3 6.3-6.3z"
-				/>
+				<svg width="20px" height="20px" viewBox="-0.5 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M3 21.32L21 3.32001" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				<path d="M3 3.32001L21 21.32" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
 			</button>
 			</header>
@@ -1007,6 +1053,13 @@
 				</div>
 
 				<div class="auth-otp" role="group" aria-label="Código SMS de 6 dígitos">
+				<input
+				id="otpAutoFill"
+				type="tel"
+				inputmode="numeric"
+				autocomplete="one-time-code"
+				style="position:fixed; top:0; left:0; width:1px; height:1px; opacity:0.01; border:0; padding:0; margin:0; pointer-events:none; z-index:-1;" />
+
 				<input class="otp" inputmode="numeric" maxlength="1" aria-label="Dígito 1" />
 				<input class="otp" inputmode="numeric" maxlength="1" aria-label="Dígito 2" />
 				<input class="otp" inputmode="numeric" maxlength="1" aria-label="Dígito 3" />
@@ -1037,9 +1090,10 @@
 					<span class="auth-brand-black">Solo</span><span class="auth-brand-pink">TIAS</span>
 				</div>
 				<button aria-label="Cerrar" class="auth-close" id="listadosCloseBtn" type="button">
-					<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24">
-					<path fill="currentColor" d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4-6.3-6.3-6.3 6.3-1.4-1.4L10.6 12 4.3 5.7 5.7 4.3l6.3 6.3 6.3-6.3z"></path>
-					</svg>
+				<svg width="20px" height="20px" viewBox="-0.5 0 25 25" fill="none" xmlns="http://www.w3.org/2000/svg">
+				<path d="M3 21.32L21 3.32001" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				<path d="M3 3.32001L21 21.32" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
 				</button>
 				</header>
 
@@ -1156,27 +1210,6 @@
 				<!-- Onboarding gestures (solo 1 vez) -->
 			<div id="gestureCoach" class="gesture-coach" hidden aria-hidden="true">
 			<div class="gesture-coach__scrim"></div>
-
-			<div class="gesture-coach__hud">
-				<div class="gesture-coach__title">Cómo moverte</div>
-				<div class="gesture-coach__sub">Desliza la tarjeta</div>
-
-				<div class="gesture-coach__rows">
-				<div class="gesture-coach__row">
-					<span class="gesture-coach__arrow">←</span>
-					<span class="gesture-coach__label">Siguiente</span>
-				</div>
-				<div class="gesture-coach__row">
-					<span class="gesture-coach__arrow">→</span>
-					<span class="gesture-coach__label">Anterior</span>
-				</div>
-				<div class="gesture-coach__row">
-					<span class="gesture-coach__arrow">↑</span>
-					<span class="gesture-coach__label">Perfil</span>
-				</div>
-				</div>
-			</div>
-
 			<div class="gesture-coach__hand" aria-hidden="true"></div>
 			<div class="gesture-coach__trail" aria-hidden="true"></div>
 			</div>
@@ -1191,7 +1224,26 @@
 				<div class="connect-ov__sub">Un momento, estamos conectando la videollamada.</div>
 			</div>
 			</div>
+      </div>
+    </div>
+  </div>
 
+  <div class="desktop-hero">
+    <div class="desktop-hero__content">
+      <h1>
+        Conecta al instante con chicas reales
+      </h1>
+      <p>
+        Descubre perfiles verificados cerca de ti, inicia videollamadas privadas
+        y disfruta de una experiencia rápida, segura y discreta.
+        SoloTIAS está diseñada para conectar en segundos.
+      </p>
+      <div class="desktop-hero__badge">
+        🔥 Entra. Conecta. Disfruta.
+      </div>
+    </div>
+  </div>
+</div>
 
 		<script src="https://cdn.agora.io/sdk/release/AgoraRTC_N.js"></script>
 		<script src="js/app.js" defer></script>

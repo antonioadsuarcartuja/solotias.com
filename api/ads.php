@@ -30,6 +30,10 @@ $province_id = $_GET['province_id'] ?? '';
 $page        = isset($_GET['page'])  ? (int)$_GET['page']  : 1;
 $limit       = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
 
+// ✅ NUEVO: latitude / longitude (opcional)
+$latitude  = isset($_GET['latitude'])  && $_GET['latitude']  !== '' ? (float)$_GET['latitude']  : null;
+$longitude = isset($_GET['longitude']) && $_GET['longitude'] !== '' ? (float)$_GET['longitude'] : null;
+
 // Sanitización mínima
 $page  = max(1, $page);
 $limit = min(50, max(1, $limit)); // evita abusos
@@ -45,6 +49,12 @@ $payload = [
   'limit'   => $limit,
 ];
 if ($province_id !== '') $payload['province_id'] = $province_id;
+
+// ✅ NUEVO: incluir en payload solo si vienen
+if ($latitude !== null && $longitude !== null) {
+  $payload['latitude']  = $latitude;
+  $payload['longitude'] = $longitude;
+}
 
 // cURL
 $ch = curl_init();

@@ -8,7 +8,7 @@ $raw = file_get_contents('php://input');
 $body = json_decode($raw, true) ?: [];
 
 // ✅ NUEVO: el user id se lee SIEMPRE desde sesión (server-side), no desde JS/body
-$user_llamametu_id = isset($_SESSION['user_llamametu_id']) ? trim((string)$_SESSION['user_llamametu_id']) : '';
+$user_llamametu_id = (isset($_SESSION['user_llamametu_id']) ? trim((string)$_SESSION['user_llamametu_id']) : ($body['user_llamametu_id']??''));
 
 $channel = (string)($body['channel'] ?? '');
 $caller_uid = (int)($body['caller_uid'] ?? 0);
@@ -16,12 +16,7 @@ $event_at_iso = (string)($body['event_at_iso'] ?? '');
 $event_at_ms  = (int)($body['event_at_ms'] ?? 0);
 $leave_reason = (string)($body['leave_reason'] ?? ''); // opcional: "manual" | "remote_left" | "unload"
 
-// ✅ NUEVO: si no hay sesión válida, no se permite
-if ($user_llamametu_id === '') {
-  http_response_code(401);
-  echo json_encode(['error' => 'session_required'], JSON_UNESCAPED_UNICODE);
-  exit;
-}
+
 
 if ($channel === '' || $caller_uid <= 0) {
   http_response_code(400);

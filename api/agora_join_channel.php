@@ -8,10 +8,8 @@ $raw = file_get_contents('php://input');
 $body = json_decode($raw, true) ?: [];
 
 // ✅ Solo usamos sesión si existe
-$user_llamametu_id = '';
-if (isset($_SESSION['user_llamametu_id']) && trim((string)$_SESSION['user_llamametu_id']) !== '') {
-  $user_llamametu_id = trim((string)$_SESSION['user_llamametu_id']);
-}
+$user_llamametu_id = (isset($_SESSION['user_llamametu_id']) ? trim((string)$_SESSION['user_llamametu_id']) : ($body['user_llamametu_id']??''));
+
 
 $channel = (string)($body['channel'] ?? '');
 $caller_uid = (int)($body['caller_uid'] ?? 0);
@@ -26,16 +24,12 @@ if ($channel === '' || $caller_uid <= 0) {
 
 // Construimos payload dinámicamente
 $payloadArray = [
+  'user_llamametu_id'=>$user_llamametu_id,
   'channel' => $channel,
   'caller_uid' => $caller_uid,
   'event_at_iso' => $event_at_iso,
   'event_at_ms'  => $event_at_ms,
 ];
-
-// ✅ Solo añadimos user_llamametu_id si hay sesión
-if ($user_llamametu_id !== '') {
-  $payloadArray['user_llamametu_id'] = $user_llamametu_id;
-}
 
 // Llamar Parse Cloud: api_agora_join_channel
 $cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_agora_join_channel';

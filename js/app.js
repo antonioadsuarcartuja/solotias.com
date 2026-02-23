@@ -96,6 +96,48 @@
   }
 
   // ===============================
+// Orientation lock (mobile only)
+// - Android/Chromium: intentamos bloquear a portrait (si está soportado)
+// - iOS: no se puede forzar el lock => mostramos overlay en horizontal
+// ===============================
+(function initOrientationGuard(){
+  const overlay = document.getElementById("rotateOverlay");
+  const isCoarse = () => window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+
+  function tryLockPortrait(){
+    try{
+      if (!isCoarse()) return;
+      const so = screen && screen.orientation;
+      if (so && typeof so.lock === "function") {
+        so.lock("portrait").catch(()=>{});
+      }
+    }catch{}
+  }
+
+  function updateAria(){
+    if (!overlay) return;
+    if (!isCoarse()) {
+      overlay.setAttribute("aria-hidden", "true");
+      return;
+    }
+    const isLandscape = window.matchMedia && window.matchMedia("(orientation: landscape)").matches;
+    overlay.setAttribute("aria-hidden", isLandscape ? "false" : "true");
+  }
+
+  tryLockPortrait();
+  updateAria();
+
+  window.addEventListener("orientationchange", () => {
+    tryLockPortrait();
+    updateAria();
+  }, { passive: true });
+
+  window.addEventListener("resize", () => {
+    updateAria();
+  }, { passive: true });
+})();
+
+  // ===============================
 // PWA Install Nudge (iOS + Android)
 // ===============================
 (function initPwaNudge(){
@@ -199,7 +241,7 @@ function close(dismiss = true){
 
   async function loadIpLocality() {
     if (!geoLine) return;
-    setGeoText("Cargando ubicacin...");
+    setGeoText("Cargando ubicación...");
     try {
       const res = await fetch("https://ipapi.co/json/", { cache: "no-store" });
       if (!res.ok) throw new Error("ipgeo");
@@ -207,9 +249,9 @@ function close(dismiss = true){
       const city = (data.city || "").trim();
       const region = (data.region || data.region_code || "").trim();
       const label = [city, region].filter(Boolean).join(", ");
-      setGeoText(label || "Ubicacin no disponible.");
+      setGeoText(label || "ubicación no disponible.");
     } catch {
-      setGeoText("Ubicacin no disponible.");
+      setGeoText("ubicación no disponible.");
     }
   }
 
@@ -238,7 +280,7 @@ function close(dismiss = true){
     return label;
   }
 
-  // Popup informativo (cuando el usuario tiene la ubicacin bloqueada)
+  // Popup informativo (cuando el usuario tiene la ubicación bloqueada)
   function showEnableLocationInfoPopup() {
     const existing = document.getElementById("geoInfoOverlay");
     if (existing) return;
@@ -247,19 +289,19 @@ function close(dismiss = true){
     let bodyText = "";
 
     if (os === "ios") {
-      bodyText =
-        "Para activar tu ubicacin y hablar con chicas cerca de ti:\n\n" +
-        "Ajustes ? Safari ? Ubicacin ? Permitir\n\n" +
-        "Luego vuelve a abrir SoloChicas.";
+    bodyText =
+      "Para activar tu ubicación y hablar con chicas cerca de ti:\n\n" +
+      "⚙️ Ajustes → 🧭 Safari → 📍 Ubicación → ✅ Permitir\n\n" +
+      "Luego vuelve a abrir SoloChicas.";
     } else if (os === "android") {
       bodyText =
-        "Para activar tu ubicacin y hablar con chicas cerca de ti:\n\n" +
-        "Ajustes ? Privacidad ? Ubicacin ? Permitir\n\n" +
-        "Asegrate de permitir la ubicacin para tu navegador y vuelve a abrir SoloChicas.";
+        "Para activar tu ubicación y hablar con chicas cerca de ti:\n\n" +
+        "⚙️ Ajustes → 🔒 Privacidad → 📍 Ubicación → ✅ Permitir\n\n" +
+        "Asegúrate de permitir la ubicación para tu navegador y vuelve a abrir SoloChicas.";
     } else {
-      bodyText =
-        "Para activar tu ubicacin, revisa los permisos de ubicacin del navegador en los ajustes del dispositivo.";
-    }
+          bodyText =
+            "Para activar tu ubicación, revisa los permisos de ubicación del navegador en los ajustes del dispositivo.";
+        }
 
     const overlay = document.createElement("div");
     overlay.id = "geoInfoOverlay";
@@ -283,7 +325,7 @@ function close(dismiss = true){
     card.style.padding = "16px";
 
     const title = document.createElement("div");
-    title.textContent = "Activa tu ubicacin";
+    title.textContent = "Activa tu ubicación";
     title.style.fontWeight = "900";
     title.style.fontSize = "16px";
     title.style.marginBottom = "8px";
@@ -340,38 +382,53 @@ function close(dismiss = true){
     setTimeout(() => btnClose.focus(), 0);
   }
 
-  function requestDeviceGeo() {
-    if (!geoLine) return;
+function requestDeviceGeo() {
+  if (!geoLine) return;
 
-    setGeoText("Obteniendo tu ubicacin...");
+  setGeoText("Obteniendo tu ubicación...");
 
-    if (!("geolocation" in navigator)) {
-      setGeoText("Usando ubicacin aproximada...");
+  if (!("geolocation" in navigator)) {
+    setGeoText("Usando ubicación aproximada...");
+    gpsBtn?.classList.add("gps-pulse");
+    loadIpLocality();
+    return;
+  }
+
+navigator.geolocation.getCurrentPosition(
+  async (pos) => {
+    try {
+      // ✅ Guardar coordenadas globales para que la primera carga pueda usarlas
+      window.__geo = window.__geo || { latitude: null, longitude: null };
+      window.__geo.latitude = pos.coords.latitude;
+      window.__geo.longitude = pos.coords.longitude;
+
+      const label = await reverseGeocodeLocality(
+        pos.coords.latitude,
+        pos.coords.longitude
+      );
+
+      setGeoText(label);
+      gpsBtn?.classList.remove("gps-pulse");
+
+      //initDynamicAds();
+      initAdsAndSwipe();
+      // ❌ IMPORTANTE: NO recargamos anuncios aquí
+      // (ya no llamamos a initDynamicAds() para evitar doble petición)
+
+    } catch {
+      setGeoText("Usando ubicación aproximada...");
       gpsBtn?.classList.add("gps-pulse");
       loadIpLocality();
-      return;
     }
-
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        try {
-          const label = await reverseGeocodeLocality(pos.coords.latitude, pos.coords.longitude);
-          setGeoText(label);
-          gpsBtn?.classList.remove("gps-pulse");
-        } catch {
-          setGeoText("Usando ubicacin aproximada...");
-          gpsBtn?.classList.add("gps-pulse");
-          loadIpLocality();
-        }
-      },
-      () => {
-        setGeoText("Usando ubicacin aproximada...");
-        gpsBtn?.classList.add("gps-pulse");
-        loadIpLocality();
-      },
-      { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
-    );
-  }
+  },
+  () => {
+    setGeoText("Usando ubicación aproximada...");
+    gpsBtn?.classList.add("gps-pulse");
+    loadIpLocality();
+  },
+  { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
+);
+}
 
   async function getGeoPermissionState() {
     // "granted" | "prompt" | "denied" | "unknown"
@@ -438,7 +495,7 @@ function close(dismiss = true){
    DATA INTEGRATION (Back4App/Parse Cloud)
    ========================= */
 const DEFAULT_WEB = "solotias.com";
-const DEFAULT_SERVICE = "webs";
+const DEFAULT_SERVICE = "";
 const DEFAULT_GENDER = "female";
 
 // Servicio activo (se puede cambiar desde el menú: Teléfono/Vídeo)
@@ -447,6 +504,135 @@ let currentService = DEFAULT_SERVICE;
 // You can define these in a small inline script before app.js if needed:
 // window.__PARSE_FUNCTION_URL, window.__PARSE_APP_ID, window.__PARSE_REST_KEY
 const PARSE_FUNCTION_URL = "/api/ads.php";
+
+// ✅ GEO GLOBAL
+window.__geo = {
+  latitude: null,
+  longitude: null
+};
+
+/* =========================
+   SEO PROFILE URL (NEW)
+   - URL bonita + pushState + popstate
+   ========================= */
+
+const PROFILE_ROUTE_PREFIX = "/contactos-mujeres-";
+
+let __seoPrevUrl = null;          // URL anterior antes de abrir perfil
+let __seoActiveProfileId = null;  // objectId actualmente en URL/perfil
+
+function slugify(text) {
+  const s = String(text || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")      // quitar acentos
+    .replace(/[^a-z0-9]+/g, "-")          // no alfanum -> guion
+    .replace(/^-+|-+$/g, "")              // trim guiones
+    .replace(/--+/g, "-");                // colapsar
+  return s || "x";
+}
+
+function buildProfilePathFromAd(ad){
+  const city = slugify(ad?.city);
+  const province = slugify(ad?.province);
+  const name = slugify(ad?.name);
+  const looking = slugify(ad?.looking_for);
+  const id = String(ad?.objectId || "").trim();
+  // id es CLAVE para unicidad (recomendación aceptada)
+  if (!id) return "/";
+  return `${PROFILE_ROUTE_PREFIX}${city}-${province}-${name}-${looking}-${id}`;
+}
+
+function parseObjectIdFromProfilePath(pathname){
+  const p = String(pathname || "");
+  if (!p.startsWith(PROFILE_ROUTE_PREFIX)) return null;
+  // el objectId va al final tras el último guion
+  const tail = p.slice(PROFILE_ROUTE_PREFIX.length);
+  const parts = tail.split("-").filter(Boolean);
+  if (parts.length === 0) return null;
+  const maybeId = parts[parts.length - 1];
+  // validación mínima: no vacío
+  return maybeId || null;
+}
+
+function pushProfileState(ad){
+  if (!ad?.objectId) return;
+  const nextPath = buildProfilePathFromAd(ad);
+  if (!nextPath || nextPath === "/") return;
+
+  // si ya estamos en el mismo perfil, no duplicar history
+  if (__seoActiveProfileId === ad.objectId && location.pathname === nextPath) return;
+
+  // guarda la url anterior solo la primera vez
+  if (!__seoPrevUrl) __seoPrevUrl = location.pathname + location.search + location.hash;
+
+  __seoActiveProfileId = ad.objectId;
+
+  try{
+    history.pushState(
+      { type: "profile", objectId: ad.objectId },
+      "",
+      nextPath
+    );
+  } catch {}
+}
+
+function restorePrevUrlIfNeeded(){
+  if (!__seoPrevUrl) {
+    __seoActiveProfileId = null;
+    return;
+  }
+  const prev = __seoPrevUrl;
+  __seoPrevUrl = null;
+  __seoActiveProfileId = null;
+
+  try{
+    history.pushState({ type: "home" }, "", prev);
+  } catch {}
+}
+
+function findCardByAdId(objectId){
+  if (!objectId) return null;
+  return document.querySelector(`.swipe-card[data-ad-id="${CSS.escape(objectId)}"]`);
+}
+
+// Si entras por URL directa dentro de la webapp (o navegas con back/forward),
+// intentamos abrir el modal cuando tengamos cards/adMap
+function maybeOpenProfileFromUrl(){
+  const objectId = parseObjectIdFromProfilePath(location.pathname);
+  if (!objectId) return false;
+
+  __seoActiveProfileId = objectId;
+
+  const card = findCardByAdId(objectId);
+  if (card && typeof openPanelFromCard === "function") {
+    openPanelFromCard(card);
+    return true;
+  }
+  return false;
+}
+
+// popstate: back/forward
+window.addEventListener("popstate", () => {
+  const objectId = parseObjectIdFromProfilePath(location.pathname);
+
+  // si volvemos a HOME (ya no hay ruta de perfil) y el panel está abierto -> cerrar
+  if (!objectId) {
+    __seoActiveProfileId = null;
+    // si panel está visible, cerrarlo
+    try {
+      const p = document.getElementById("panel");
+      if (p && !p.classList.contains("hidden") && p.classList.contains("open")) {
+        window.closePanel?.();
+      }
+    } catch {}
+    return;
+  }
+
+  // si estamos en una ruta de perfil y el panel NO está abierto aún, intentar abrirlo
+  try { maybeOpenProfileFromUrl(); } catch {}
+});
 
 
 // --- Infinite paging (prefetch) ---
@@ -626,15 +812,23 @@ async function fetchAdvertisements({
   page = 1,
   limit = 20,
 } = {}) {
+
   const qs = new URLSearchParams({
-    service,
     gender,
     web,
     page: String(page),
     limit: String(limit),
   });
 
+  // ✅ Solo si hay filtro activo
+  if (service) qs.set("service", service);
   if (province_id) qs.set("province_id", province_id);
+
+  // ✅ GEO automática si existe
+  if (window.__geo.latitude && window.__geo.longitude) {
+    qs.set("latitude", window.__geo.latitude);
+    qs.set("longitude", window.__geo.longitude);
+  }
 
   const res = await fetch(`${PARSE_FUNCTION_URL}?${qs.toString()}`, {
     method: "GET",
@@ -645,7 +839,6 @@ async function fetchAdvertisements({
 
   const raw = await res.json();
 
-  // 👇 ESTA ES LA CLAVE
   const data = (raw && raw.result && typeof raw.result === "object")
     ? raw.result
     : raw;
@@ -732,33 +925,53 @@ function createCardElFromAd(ad) {
   const meta = document.createElement("div");
   meta.className = "meta";
 
-  const rowName = document.createElement("div");
-  rowName.className = "meta-row name";
-  rowName.innerHTML = `
-    <span aria-hidden="true" class="verified">
-      <svg width="18" height="18" viewBox="0 0 24 24">
-        <path d="M12 2l2.2 2.6 3.3-.3.8 3.2 3 1.5-1.5 3 1.5 3-3 1.5-.8 3.2-3.3-.3L12 22l-2.2-2.6-3.3.3-.8-3.2-3-1.5L4.2 12 2.7 9l3-1.5.8-3.2 3.3.3L12 2z" fill="#0a84ff"></path>
-        <path d="M10.4 12.4l-1.6-1.6-1.1 1.1 2.7 2.7 5.9-5.9-1.1-1.1-4.8 4.8z" fill="#ffffff"></path>
-      </svg>
-    </span>
-    <span class="name-text"></span>
-  `;
-  rowName.querySelector(".name-text").textContent = `${ad?.name || "—"}, ${ad?.age || ""}`.replace(", ", ", ").trim();
-  meta.appendChild(rowName);
+const rowName = document.createElement("div");
+rowName.className = "meta-row name";
+rowName.innerHTML = `
+  <span aria-hidden="true" class="verified">
+    <svg width="18" height="18" viewBox="0 0 24 24">
+      <path d="M12 2l2.2 2.6 3.3-.3.8 3.2 3 1.5-1.5 3 1.5 3-3 1.5-.8 3.2-3.3-.3L12 22l-2.2-2.6-3.3.3-.8-3.2-3-1.5L4.2 12 2.7 9l3-1.5.8-3.2 3.3.3L12 2z" fill="#0a84ff"></path>
+      <path d="M10.4 12.4l-1.6-1.6-1.1 1.1 2.7 2.7 5.9-5.9-1.1-1.1-4.8 4.8z" fill="#ffffff"></path>
+    </svg>
+  </span>
+  <a class="name-text seo-profile-link" href="#"></a>
+`;
 
-  const rowLoc = document.createElement("div");
-  rowLoc.className = "meta-row loc";
-  rowLoc.innerHTML = `
-    <span aria-hidden="true" class="flag">
-      <svg height="14" width="22" viewBox="0 0 3 2" preserveAspectRatio="none">
-        <rect width="3" height="2" fill="#aa151b"></rect>
-        <rect y="0.5" width="3" height="1" fill="#f1bf00"></rect>
-      </svg>
-    </span>
-    <span class="loc-text"></span>
-  `;
-  rowLoc.querySelector(".loc-text").textContent = [ad?.city, ad?.province].filter(Boolean).join(", ") || "—";
-  meta.appendChild(rowLoc);
+rowName.querySelector(".name-text").textContent =
+  `${ad?.name || "—"}, ${ad?.age || ""}`.replace(", ", ", ").trim();
+
+// ✅ SEO LINK REAL + MISMA UX (abre modal, no navega)
+const nameLink = rowName.querySelector("a.name-text.seo-profile-link");
+if (nameLink) {
+  nameLink.href = buildProfilePathFromAd(ad); // viene del 2.1
+  nameLink.setAttribute("aria-label", `Ver perfil de ${ad?.name || "perfil"}`);
+
+  nameLink.addEventListener("click", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof openPanelFromCard === "function") {
+      openPanelFromCard(card);
+    }
+  });
+}
+
+meta.appendChild(rowName);
+
+const rowLoc = document.createElement("div");
+rowLoc.className = "meta-row loc";
+rowLoc.innerHTML = `
+  <span aria-hidden="true" class="flag">
+    <svg height="14" width="22" viewBox="0 0 3 2" preserveAspectRatio="none">
+      <rect width="3" height="2" fill="#aa151b"></rect>
+      <rect y="0.5" width="3" height="1" fill="#f1bf00"></rect>
+    </svg>
+  </span>
+  <span class="loc-text"></span>
+`;
+rowLoc.querySelector(".loc-text").textContent =
+  [ad?.city, ad?.province].filter(Boolean).join(", ") || "—";
+
+meta.appendChild(rowLoc);
 
   const rowTag = document.createElement("div");
   rowTag.className = "meta-row tagline";
@@ -1395,32 +1608,130 @@ function updateStack(){
     return card.querySelector("img") || card.querySelector("video");
   }
 
-  function buildPanelHero(card) {
-    if (!panelHero) return;
-    panelHero.innerHTML = "";
-    const img = card.querySelector("img");
-    const vid = card.querySelector("video");
+function buildPanelHero(card) {
+  if (!panelHero) return;
+  panelHero.innerHTML = "";
 
-    if (img) {
-      const heroImg = document.createElement("img");
-      heroImg.src = img.currentSrc || img.src;
-      heroImg.alt = img.alt || "";
-      panelHero.appendChild(heroImg);
-      return;
-    }
+  // ✅ X SOLO escritorio (mouse/trackpad)
+  const isDesktop = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
-    if (vid) {
-      const heroVid = document.createElement("video");
-      heroVid.src = vid.currentSrc || vid.src;
-      heroVid.muted = vid.muted;
-      heroVid.playsInline = true;
-      heroVid.controls = true;
-      heroVid.loop = true;
-      heroVid.preload = "metadata";
-      panelHero.appendChild(heroVid);
-      heroVid.play().catch(() => {});
-    }
+  if (isDesktop) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "panelDesktopClose";
+    btn.setAttribute("aria-label", "Cerrar");
+    btn.textContent = "×";
+
+    // estilos inline para NO depender de CSS (no rompe nada)
+    btn.style.position = "absolute";
+    btn.style.top = "14px";
+    btn.style.right = "14px";
+    btn.style.width = "44px";
+    btn.style.height = "44px";
+    btn.style.borderRadius = "999px";
+    btn.style.border = "1px solid rgba(255,255,255,.25)";
+    btn.style.background = "rgba(0,0,0,.45)";
+    btn.style.color = "#fff";
+    btn.style.fontSize = "28px";
+    btn.style.fontWeight = "800";
+    btn.style.lineHeight = "1";
+    btn.style.display = "grid";
+    btn.style.placeItems = "center";
+    btn.style.cursor = "pointer";
+    btn.style.zIndex = "9999";
+    btn.style.backdropFilter = "blur(6px)";
+    btn.style.webkitBackdropFilter = "blur(6px)";
+
+    // ✅ FIX Chrome: evita delay + evita que el evento llegue al <video>
+    btn.style.touchAction = "manipulation";
+    btn.style.webkitTapHighlightColor = "transparent";
+    btn.style.userSelect = "none";
+
+    const stopAll = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+    };
+
+    // ✅ cerrar en pointerdown (más fiable que click)
+    btn.addEventListener(
+      "pointerdown",
+      (e) => {
+        stopAll(e);
+        closePanel();
+      },
+      { capture: true }
+    );
+
+    // ✅ backup
+    btn.addEventListener(
+      "click",
+      (e) => {
+        stopAll(e);
+        closePanel();
+      },
+      { capture: true }
+    );
+
+    panelHero.appendChild(btn);
   }
+
+  const img = card.querySelector("img");
+  const vid = card.querySelector("video");
+
+  const fade = `linear-gradient(to bottom,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.35) 55%,
+    rgba(255,255,255,0.85) 80%,
+    rgba(255,255,255,1) 100%)`;
+
+  // limpiar fondo anterior
+  panelHero.style.backgroundImage = "";
+  panelHero.style.backgroundSize = "";
+  panelHero.style.backgroundPosition = "";
+  panelHero.style.backgroundRepeat = "";
+
+  if (img) {
+    const src = img.currentSrc || img.src;
+
+    // ✅ FOTO + DEGRADADO (visible desde el primer frame)
+    panelHero.style.backgroundImage = `${fade}, url("${src}")`;
+    panelHero.style.backgroundSize = `100% 100%, cover`;
+    panelHero.style.backgroundPosition = `0 0, center`;
+    panelHero.style.backgroundRepeat = `no-repeat, no-repeat`;
+
+    // (Opcional) accesibilidad
+    panelHero.setAttribute("aria-label", img.alt || "");
+    return;
+  }
+
+  if (vid) {
+    const src = vid.currentSrc || vid.src;
+
+    // Si hay poster, lo usamos con degradado mientras carga el vídeo
+    if (vid.poster) {
+      panelHero.style.backgroundImage = `${fade}, url("${vid.poster}")`;
+      panelHero.style.backgroundSize = `100% 100%, cover`;
+      panelHero.style.backgroundPosition = `0 0, center`;
+      panelHero.style.backgroundRepeat = `no-repeat, no-repeat`;
+    } else {
+      panelHero.style.backgroundImage = `${fade}`;
+      panelHero.style.backgroundSize = `100% 100%`;
+      panelHero.style.backgroundPosition = `0 0`;
+      panelHero.style.backgroundRepeat = `no-repeat`;
+    }
+
+    const heroVid = document.createElement("video");
+    heroVid.src = src;
+    heroVid.muted = vid.muted;
+    heroVid.playsInline = true;
+    heroVid.controls = true;
+    heroVid.loop = true;
+    heroVid.preload = "metadata";
+    panelHero.appendChild(heroVid);
+    heroVid.play().catch(() => {});
+  }
+}
 
 function openPanelFromCard(card) {
   if (!panel || !panelHero || !panelSheet) return;
@@ -1436,13 +1747,27 @@ function openPanelFromCard(card) {
   panel.classList.remove("hidden");
   panel.style.setProperty("--panelBackAlpha", "0");
 
+  // ✅ FIX: por si quedó visibilidad tocada en algún cierre
+  panel.style.visibility = "";
+
   const prevTransition = panelSheet.style.transition;
   panelSheet.style.transition = "none";
+
+  // ✅ FIX: asegura que el sheet está arriba (evita quedarse abajo con backdrop)
+  panelSheet.style.transform = "translateY(0px)";
+
   panel.classList.add("open");
 
-  buildPanelHero(card);
-  try { populateProfilePanel(getAdFromCard(card) || null); } catch {}
-  panelHero.style.visibility = "hidden";
+buildPanelHero(card);
+try { populateProfilePanel(getAdFromCard(card) || null); } catch {}
+
+// ✅ NEW 2.3: al abrir perfil, poner URL bonita (SEO + deep link)
+try {
+  const ad = getAdFromCard(card) || null;
+  if (ad) pushProfileState(ad);
+} catch {}
+
+panelHero.style.visibility = "hidden";
 
   // Forzar layout
   panelSheet.offsetHeight;
@@ -1497,21 +1822,61 @@ function openPanelFromCard(card) {
   );
 
   const finish = () => {
-    wrapper.remove();
+    const heroMedia = panelHero?.querySelector("img, video");
 
-    // ✅ Cross-fade mínimo para evitar salto visual
+    // Hero preparado pero invisible (no mostramos el fondo gris)
     panelHero.style.opacity = "0";
     panelHero.style.visibility = "visible";
 
-    requestAnimationFrame(() => {
-      panelHero.style.transition = "opacity 120ms ease";
+    const crossfadeToHero = () => {
+      // 1) sube hero
+      panelHero.style.transition = "opacity 140ms ease";
       panelHero.style.opacity = "1";
-      setTimeout(() => {
-        panelHero.style.transition = "";
-      }, 140);
-    });
 
-    panelSheet.style.transition = prevTransition;
+      // 2) baja clon y lo quitamos al final
+      wrapper.style.transition = "opacity 140ms ease";
+      wrapper.style.opacity = "0";
+
+      setTimeout(() => {
+        wrapper.remove();
+        panelHero.style.transition = "";
+
+        // ✅ restaura transición original
+        panelSheet.style.transition = prevTransition;
+
+        // ✅ y deja el transform limpio (ya manda el CSS)
+        panelSheet.style.transform = "";
+      }, 160);
+    };
+
+    if (!heroMedia) return crossfadeToHero();
+
+    // IMG: espera a load + decode si existe
+    if (heroMedia.tagName === "IMG") {
+      const img = heroMedia;
+      const ready = async () => {
+        try { await img.decode?.(); } catch {}
+        crossfadeToHero();
+      };
+
+      if (img.complete && img.naturalWidth > 0) ready();
+      else {
+        img.addEventListener("load", ready, { once: true });
+        img.addEventListener("error", crossfadeToHero, { once: true });
+      }
+
+      setTimeout(crossfadeToHero, 700); // fallback
+      return;
+    }
+
+    // VIDEO: espera a que haya primer frame
+    const v = heroMedia;
+    if (v.readyState >= 2) crossfadeToHero();
+    else {
+      v.addEventListener("loadeddata", crossfadeToHero, { once: true });
+      v.addEventListener("error", crossfadeToHero, { once: true });
+      setTimeout(crossfadeToHero, 900); // fallback
+    }
   };
 
   // ✅ FIX ANDROID: garantizar limpieza aunque onfinish falle o se cancele
@@ -1585,104 +1950,131 @@ function initHeroCollapseOnScroll() {
 function closePanel() {
   if (!panel) return;
 
-  const topbar = document.querySelector(".topbar");
+  const isDesktop = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 
-  // Hard repaint específico Chrome Android (sin parpadeo notable)
-  
+  // evitar saltos de transición
+  panel.classList.add("closing");
 
-  panel.dispatchEvent(new Event("panel:close"));
+  // ================================
+  // ✅ ESCRITORIO (cierre suave)
+  // ================================
+  if (isDesktop) {
+    // cancelar animaciones previas por seguridad
+    try { panelSheet?.getAnimations?.().forEach(a => a.cancel()); } catch (e) {}
 
-  const card = lastOpenedCardIndex != null ? cards[lastOpenedCardIndex] : null;
-  const fromEl = panelHero?.querySelector("img, video");
-  const toEl = card ? card.querySelector("img") || card.querySelector("video") : null;
-
-  // Cierre simple si no hay shared-element
-  if (!fromEl || !toEl) {
     panel.classList.remove("open");
     panel.style.setProperty("--panelBackAlpha", "0");
 
+    const h = Math.max(window.innerHeight, 700);
+    const durationMs = 520;
+
+    let sheetAnim = null;
+
+    try {
+      sheetAnim = panelSheet?.animate(
+        [
+          { transform: "translateY(0px)", opacity: 1 },
+          { transform: `translateY(${h}px)`, opacity: 0.98 },
+        ],
+        {
+          duration: durationMs,
+          easing: "cubic-bezier(.22,.9,.24,1)",
+          fill: "forwards",
+        }
+      );
+    } catch (e) {
+      if (panelSheet) panelSheet.style.transform = `translateY(${h}px)`;
+    }
+
     setTimeout(() => {
+      try { sheetAnim?.cancel(); } catch (e) {}
+      try { panelSheet?.getAnimations?.().forEach(a => a.cancel()); } catch (e) {}
+
       panel.classList.add("hidden");
+
       if (panelHero) panelHero.innerHTML = "";
       panelHero.style.visibility = "visible";
+
       panel.style.removeProperty("--panelBackAlpha");
       if (panelSheet) panelSheet.style.transform = "";
 
+      // reset hero-collapse cuando ya está cerrado
+      panel.dispatchEvent(new Event("panel:close"));
+
+      panel.classList.remove("closing");
       hardRepaintTopbar();
-    }, 260);
+    }, durationMs + 40);
 
     return;
   }
 
-  const from = fromEl.getBoundingClientRect();
-  const to = toEl.getBoundingClientRect();
+  // ================================
+  // ✅ MÓVIL (slide down + cleanup en 2 fases para evitar micro-parpadeo final)
+  // ================================
 
-  const clone = fromEl.cloneNode(true);
-  const wrapper = document.createElement("div");
-  wrapper.className = "hero-clone";
-  wrapper.style.left = `${from.left}px`;
-  wrapper.style.top = `${from.top}px`;
-  wrapper.style.width = `${from.width}px`;
-  wrapper.style.height = `${from.height}px`;
-  wrapper.style.opacity = "1";
-  wrapper.style.borderRadius = "34px";
-  wrapper.appendChild(clone);
-  document.body.appendChild(wrapper);
-
-  panelHero.style.visibility = "hidden";
+  // cancelar animaciones previas por seguridad
+  try { panelSheet?.getAnimations?.().forEach(a => a.cancel()); } catch (e) {}
 
   panel.classList.remove("open");
   panel.style.setProperty("--panelBackAlpha", "0");
 
-  const durationMs = 420;
-  const anim = wrapper.animate(
-    [
-      {
-        left: `${from.left}px`,
-        top: `${from.top}px`,
-        width: `${from.width}px`,
-        height: `${from.height}px`,
-        opacity: 1,
-      },
-      {
-        left: `${to.left}px`,
-        top: `${to.top}px`,
-        width: `${to.width}px`,
-        height: `${to.height}px`,
-        opacity: 0.98,
-      },
-    ],
-    {
-      duration: durationMs,
-      easing: "cubic-bezier(.16,1,.3,1)",
-      fill: "forwards",
-    }
-  );
+  const h = Math.max(window.innerHeight, 700);
+  const durationMs = 360;
 
-  const finish = () => {
-    wrapper.remove();
+  let sheetAnim = null;
+
+  try {
+    sheetAnim = panelSheet?.animate(
+      [
+        { transform: "translateY(0px)", opacity: 1 },
+        { transform: `translateY(${h}px)`, opacity: 0.98 },
+      ],
+      {
+        duration: durationMs,
+        easing: "cubic-bezier(.22,.9,.24,1)",
+        fill: "forwards",
+      }
+    );
+  } catch (e) {
+    if (panelSheet) panelSheet.style.transform = `translateY(${h}px)`;
+  }
+
+  setTimeout(() => {
+    // ✅ 1) Oculta primero (evita ver el reset de transform en móvil)
     panel.classList.add("hidden");
-    if (panelHero) panelHero.innerHTML = "";
-    panelHero.style.visibility = "visible";
-    panel.style.removeProperty("--panelBackAlpha");
-    if (panelSheet) panelSheet.style.transform = "";
+    panel.style.visibility = "hidden";
 
-    hardRepaintTopbar();
-  };
+    // ✅ 2) En el siguiente frame, limpia todo
+    requestAnimationFrame(() => {
+      try { sheetAnim?.cancel(); } catch (e) {}
+      try { panelSheet?.getAnimations?.().forEach(a => a.cancel()); } catch (e) {}
 
-  let done = false;
-  const safeFinish = () => {
-    if (done) return;
-    done = true;
-    finish();
-  };
+      if (panelHero) panelHero.innerHTML = "";
+      panelHero.style.visibility = "visible";
 
-  anim.onfinish = safeFinish;
-  anim.oncancel = safeFinish;
-  setTimeout(safeFinish, durationMs + 140);
+      panel.style.removeProperty("--panelBackAlpha");
+      if (panelSheet) panelSheet.style.transform = "";
+
+      panel.dispatchEvent(new Event("panel:close"));
+      panel.classList.remove("closing");
+
+      // vuelve a dejar visible el panel para la próxima apertura
+      panel.style.visibility = "";
+
+      hardRepaintTopbar();
+    });
+  }, durationMs + 40);
 }
 
-
+// ✅ NEW 2.4: restaurar URL al cerrar panel (SEO)
+try {
+  panel?.addEventListener("panel:close", function () {
+    const isProfile = String(location.pathname || "").startsWith(PROFILE_ROUTE_PREFIX);
+    if (isProfile) {
+      restorePrevUrlIfNeeded(); // viene del 2.1
+    }
+  });
+} catch {}
 
 
 
@@ -1738,7 +2130,31 @@ function initPanelDragSnap() {
         ],
         { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" }
       )
-      .onfinish = () => closePanel();
+      .onfinish = () => {
+        // ✅ cerrar “de verdad” aquí, sin arrancar otro closePanel()
+        panel.classList.remove("open");
+        panel.style.setProperty("--panelBackAlpha", "0");
+
+        // ocultar ya (evita 1 frame raro)
+        panel.classList.add("hidden");
+
+        if (panelHero) panelHero.innerHTML = "";
+        if (panelHero) panelHero.style.visibility = "visible";
+
+        // ✅ FIX CLAVE: NO dejes transform inline “pegado”
+        // Lo dejamos limpio para que al abrir mande el CSS / openPanelFromCard
+        if (panelSheet) {
+          const prev = panelSheet.style.transition;
+          panelSheet.style.transition = "none";
+          panelSheet.style.transform = "";       // 👈 en vez de translateY(100%)
+          panelSheet.offsetHeight;               // force reflow
+          panelSheet.style.transition = prev || "";
+        }
+
+        panel.dispatchEvent(new Event("panel:close"));
+        panel.classList.remove("closing");
+        hardRepaintTopbar();
+      };
 
     panel.style.setProperty("--panelBackAlpha", "0");
   }
@@ -1793,7 +2209,7 @@ function initPanelDragSnap() {
 
   const usePointer = "PointerEvent" in window;
 
-  // ? Solo permitimos drag-to-close si el gesto empieza en la cabecera
+  // ✅ Solo permitimos drag-to-close si el gesto empieza en la cabecera
   const dragHandle = panelHero || panelSheet;
 
   function canStartCloseGesture(eTarget) {
@@ -1986,6 +2402,66 @@ function initPanelDragSnap() {
   resetCard(card);
 }
 
+
+function initDesktopSwipeControls() {
+  const controls = document.querySelector(".desktop-swipe-controls");
+  if (!controls) return;
+
+  const isDesktop =
+    window.matchMedia("(min-width:1024px)").matches &&
+    window.matchMedia("(hover:hover)").matches;
+
+  controls.hidden = !isDesktop;
+  if (!isDesktop) return;
+
+  const btnPrev = document.getElementById("deskPrev");
+  const btnNext = document.getElementById("deskNext");
+  const btnProfile = document.getElementById("deskProfile");
+
+  // ✅ Fuente de verdad: la misma card activa que usas para el swipe
+  function currentCard() {
+    // 1) si existe activeCard() en este scope, úsala
+    try {
+      const c = typeof activeCard === "function" ? activeCard() : null;
+      if (c) return c;
+    } catch (e) {}
+
+    // 2) fallback por selector correcto
+    return document.querySelector(".swipe-card.active");
+  }
+
+  btnNext?.addEventListener("click", () => {
+    const card = currentCard();
+    if (!card) return;
+    flyOut(card, -1);
+    setTimeout(() => {
+      goNext();
+    }, 250);
+  });
+
+  btnPrev?.addEventListener("click", () => {
+    const card = currentCard();
+    if (!card) return;
+    flyOut(card, +1);
+    setTimeout(() => {
+      goPrev();
+    }, 250);
+  });
+
+  btnProfile?.addEventListener("click", () => {
+    const card = currentCard();
+    if (!card) return;
+    openPanelFromCard(card);
+  });
+
+  window.addEventListener("resize", () => {
+    const show =
+      window.matchMedia("(min-width:1024px)").matches &&
+      window.matchMedia("(hover:hover)").matches;
+    controls.hidden = !show;
+  });
+}
+
   function initSwipe() {
     if (!container || cards.length === 0) return;
 
@@ -2033,18 +2509,31 @@ if (typeof initHeroCollapseOnScroll === "function") {
       container.addEventListener("touchend", onEnd, { passive: true });
       container.addEventListener("touchcancel", onEnd, { passive: true });
     }
+      initDesktopSwipeControls();
   }
 
 
 
-  async function initAdsAndSwipe(){
-    await initDynamicAds();
-    // reset índice y re-init stack con las cards reales
-    index = 0;
-    initSwipe();
-  }
+async function initAdsAndSwipe() {
+  // ✅ Intentamos geolocalización antes de pedir anuncios (una sola vez)
+  // Si el usuario acepta y llega rápido → el primer fetch irá con lat/lon
+  // Si rechaza o tarda → seguirá sin lat/lon, pero SOLO habrá una petición
+  try { await ensureInitialGeo(); } catch {}
 
-  initAdsAndSwipe();
+  await initDynamicAds();
+
+  index = 0;
+  initSwipe();
+
+  try {
+    if (!__seoPrevUrl && String(location.pathname || "").startsWith(PROFILE_ROUTE_PREFIX)) {
+      __seoPrevUrl = "/";
+    }
+    maybeOpenProfileFromUrl();
+  } catch {}
+}
+
+//initAdsAndSwipe();
 
 
 
@@ -2869,7 +3358,8 @@ async function startAgoraCall(params) {
     remoteContainer.innerHTML = "";
     localContainer.innerHTML = "";
 
-    __agoraClient = window.AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+    // ✅ CAMBIO: H264 (mejor compatibilidad/calidad en iOS)
+    __agoraClient = window.AgoraRTC.createClient({ mode: "rtc", codec: "h264" });
 
     __agoraClient.on("user-published", async (user, mediaType) => {
       await __agoraClient.subscribe(user, mediaType);
@@ -2900,7 +3390,6 @@ async function startAgoraCall(params) {
     });
 
     __agoraClient.on("user-unpublished", (user, mediaType) => {
-
       // 🔊 Si solo dejó de publicar audio (mic apagado)
       if (mediaType === "audio") {
         __agoraRemoteAudioTrack = null;
@@ -2944,9 +3433,34 @@ async function startAgoraCall(params) {
     __agoraJoined = true;
 
     __agoraLocalAudioTrack = await window.AgoraRTC.createMicrophoneAudioTrack();
-    __agoraLocalVideoTrack = await window.AgoraRTC.createCameraVideoTrack();
+
+    // ✅ CAMBIO: 1080p real (Full HD) + bitrate estable
+    __agoraLocalVideoTrack = await window.AgoraRTC.createCameraVideoTrack({
+      encoderConfig: {
+        width: 1920,
+        height: 1080,
+        frameRate: 30,
+        bitrateMin: 2500,
+        bitrateMax: 4500,
+      },
+    });
 
     await __agoraClient.publish([__agoraLocalAudioTrack, __agoraLocalVideoTrack]);
+
+    // (Opcional) Debug: confirmar resolución enviada
+    try {
+      setTimeout(() => {
+        const stats = __agoraLocalVideoTrack?.getStats?.();
+        console.log(
+          "📊 Agora send:",
+          stats?.sendResolutionWidth,
+          "x",
+          stats?.sendResolutionHeight,
+          "| bitrate:",
+          stats?.sendBitrate
+        );
+      }, 2500);
+    } catch (e) {}
 
     __agoraSession = { appId, channel, uid };
     __agoraLeaveSent = false;
@@ -3123,6 +3637,7 @@ function exitCallAndReturnHome() {
 
   const step1 = document.getElementById("authStep1");
   const step2 = document.getElementById("authStep2");
+  initOtpAutoFill();
 
   const countrySel = document.getElementById("authCountry");
   const phoneInput = document.getElementById("authPhone");
@@ -3281,13 +3796,24 @@ function exitCallAndReturnHome() {
     // iniciar timer y OTP
     resetOtp();
     startTimer();
+    tryWebOtp();
 
     // NUEVO: re-habilitar OTP inputs al entrar en step2
     otpInputs.forEach((i) => (i.disabled = false));
     resetOtpAttempts();
     setNiceError("");
 
-    setTimeout(() => otpInputs[0]?.focus?.(), 0);
+    setTimeout(() => {
+  const auto = document.getElementById("otpAutoFill");
+
+  // 1) foco al input con autocomplete="one-time-code" (iOS)
+  auto?.focus?.();
+
+  // 2) volvemos al primer OTP visible para tecleo normal
+  setTimeout(() => {
+    otpInputs[0]?.focus?.();
+  }, 80);
+}, 0);
   }
 
   function lockScroll() {
@@ -3360,35 +3886,45 @@ function exitCallAndReturnHome() {
     }, 180);
   }
 
-  // ---------- Timer ----------
-  function renderTimer() {
-    // requisito: 00:60 -> 00:00
-    const s = clamp(countdown, 0, 60);
-    const ss = String(s).padStart(2, "0");
-    if (timerEl) timerEl.textContent = `00:${ss}`;
-  }
+// ---------- Timer ----------
+function renderTimer() {
+  // requisito: 00:60 -> 00:00
+  const s = clamp(countdown, 0, 60);
+  const ss = String(s).padStart(2, "0");
+  if (timerEl) timerEl.textContent = `00:${ss}`;
+}
 
-  function startTimer() {
-    stopTimer();
-    countdown = 60;
-    renderTimer();
+function startTimer() {
+  stopTimer();
 
-    timerId = setInterval(() => {
-      countdown -= 1;
-      if (countdown <= 0) {
-        countdown = 0;
-        renderTimer();
-        stopTimer();
-        return;
-      }
+  const backBtn = document.getElementById("authBackBtn");
+  if (backBtn) backBtn.style.display = "none"; // 🔥 ocultar al empezar
+
+  countdown = 60;
+  renderTimer();
+
+  timerId = setInterval(() => {
+    countdown -= 1;
+
+    if (countdown <= 0) {
+      countdown = 0;
       renderTimer();
-    }, 1000);
-  }
+      stopTimer();
 
-  function stopTimer() {
-    if (timerId) clearInterval(timerId);
-    timerId = null;
-  }
+      // 🔥 mostrar cuando llega a 00:00
+      if (backBtn) backBtn.style.display = "block";
+
+      return;
+    }
+
+    renderTimer();
+  }, 1000);
+}
+
+function stopTimer() {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+}
 
   // ---------- OTP ----------
   function resetOtp() {
@@ -3449,6 +3985,9 @@ function exitCallAndReturnHome() {
       verifyingOtp = false;
     }
   }
+
+  // ✅ Hook global para OTP autofill (iOS/Android) sin duplicar lógica
+    window.__solotias_verifyOtpAndLogin = verifyOtpAndLogin;
 
   function handleOtpInput(e, idx) {
     const input = e.target;
@@ -3542,42 +4081,42 @@ function exitCallAndReturnHome() {
     updatePhoneUI();
   }
 
-  async function onSendCode() {
-    // PRELOGIN real (envía sms)
-    if (sendBtn.disabled) return;
-    if (sendingPhone) return;
+async function onSendCode() {
+  // PRELOGIN real (envía sms)
+  if (sendBtn.disabled) return;
+  if (sendingPhone) return;
 
-    sendingPhone = true;
-    sendBtn.disabled = true;
-    setNiceError("");
+  sendingPhone = true;
+  sendBtn.disabled = true;
+  setNiceError("");
 
-    try {
-      const fullPhone = getE164Phone();
+  try {
+    const fullPhone = getE164Phone();
 
-      const r = await callAuthProxy({
-        action: "prelogin",
-        phonenumber: fullPhone,
-      });
+    const r = await callAuthProxy({
+      action: "prelogin",
+      phonenumber: fullPhone,
+    });
 
-      // Esperado: { ok:true, user_llamametu_id:"..." }
-      if (!r || r.ok !== true || !r.user_llamametu_id) {
-        setNiceError("No se pudo enviar el código. Inténtalo de nuevo.");
-        return;
-      }
-
-      preloginUserId = String(r.user_llamametu_id);
-      window.__llamametu_user_id = preloginUserId;
-
-      // pasar a step2
-      setStep(2);
-
-    } catch (e) {
-      setNiceError("Error de conexión. Inténtalo de nuevo.");
-    } finally {
-      sendingPhone = false;
-      updatePhoneUI({ silent: true });
+    // Esperado: { ok:true, user_llamametu_id:"..." }
+    if (!r || r.ok !== true || !r.user_llamametu_id) {
+      setNiceError("No se pudo enviar el código. Inténtalo de nuevo.");
+      return;
     }
+
+    preloginUserId = String(r.user_llamametu_id);
+    window.__llamametu_user_id = preloginUserId;
+
+    // pasar a step2
+    setStep(2);
+
+  } catch (e) {
+    setNiceError("Error de conexión. Inténtalo de nuevo.");
+  } finally {
+    sendingPhone = false;
+    updatePhoneUI({ silent: true });
   }
+}
 
   // ---------- Events ----------
   populateCountries();
@@ -4731,6 +5270,19 @@ function goToStore() {
   const swipeContainer = document.getElementById("swipeContainer");
 
   if (!el || !swipeContainer) return;
+
+  // ✅ En escritorio NO se muestra nunca
+  const isDesktop =
+    window.matchMedia("(min-width: 1024px)").matches &&
+    window.matchMedia("(hover: hover)").matches;
+
+  if (isDesktop) {
+    localStorage.setItem(KEY, "1");        // lo marca como visto
+    el.hidden = true;
+    el.setAttribute("aria-hidden", "true");
+    return;
+  }
+
   if (localStorage.getItem(KEY) === "1") return;
 
   function show(){
@@ -4747,22 +5299,24 @@ function goToStore() {
 
     swipeContainer.removeEventListener("pointerdown", onMoveStart);
     swipeContainer.removeEventListener("touchstart", onMoveStart);
+    el.removeEventListener("click", onDismissClick);
   }
 
   function onMoveStart(e){
-    // Solo ocultar si realmente empieza un gesto sobre una card
-    if (e.target.closest(".swipe-card")) {
-      hideForever();
-    }
+    if (e.target.closest(".swipe-card")) hideForever();
   }
 
-  // Mostrar tras pequeño delay cuando todo esté renderizado
+  // ✅ Por si el usuario toca/clica el overlay (también lo cerramos)
+  function onDismissClick(){
+    hideForever();
+  }
+
   setTimeout(show, 800);
 
-  // Escuchar solo gestos sobre cartas
   swipeContainer.addEventListener("pointerdown", onMoveStart, { passive:true });
   swipeContainer.addEventListener("touchstart", onMoveStart, { passive:true });
 
+  el.addEventListener("click", onDismissClick);
 })();
 
 function showConnectOverlay(title, sub) {
@@ -4790,4 +5344,68 @@ function hideConnectOverlay() {
   document.documentElement.classList.remove("no-scroll");
   document.body.classList.remove("no-scroll");
 }
+// ==============================
+// OTP AUTO FILL (iOS + Android)
+// ==============================
 
+function initOtpAutoFill() {
+  const hiddenInput = document.getElementById("otpAutoFill");
+  const otpInputs = [...document.querySelectorAll(".otp")];
+
+  if (!hiddenInput || otpInputs.length === 0) return;
+
+function spreadCode(code) {
+  const clean = code.replace(/\D/g, "").slice(0, otpInputs.length);
+
+  otpInputs.forEach((input, i) => {
+    input.value = clean[i] || "";
+  });
+
+  if (clean.length === otpInputs.length) {
+    // ✅ Lanzar verificación automática cuando los 6 dígitos estén completos
+    try {
+      window.__solotias_verifyOtpAndLogin?.(clean);
+    } catch (e) {
+      console.error("OTP auto verify error:", e);
+    }
+  }
+}
+
+  hiddenInput.addEventListener("input", () => {
+    spreadCode(hiddenInput.value);
+  });
+
+}
+
+async function tryWebOtp() {
+  // Solo Android / navegadores compatibles
+  if (!("OTPCredential" in window) || !navigator.credentials) return;
+
+  const ac = new AbortController();
+
+  // Cancelar automáticamente tras 60 segundos
+  setTimeout(() => ac.abort(), 60000);
+
+  try {
+    const content = await navigator.credentials.get({
+      otp: { transport: ["sms"] },
+      signal: ac.signal
+    });
+
+    if (content && content.code) {
+      const hiddenInput = document.getElementById("otpAutoFill");
+      if (!hiddenInput) return;
+
+      // Rellenamos el input oculto
+      hiddenInput.value = content.code;
+
+      // Disparamos el evento input para que se pinten los 6 dígitos
+      hiddenInput.dispatchEvent(
+        new Event("input", { bubbles: true })
+      );
+    }
+
+  } catch (err) {
+    // Timeout, cancelación o no compatible → silencio
+  }
+}
