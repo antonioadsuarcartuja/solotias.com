@@ -4,7 +4,7 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 require_once __DIR__ . '/config.php';
 
-session_start();
+
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
   http_response_code(405);
@@ -27,7 +27,7 @@ if ($page < 1) $page = 1;
 // ✅ NUEVO: si no hay sesión válida → 401
 if ($user_llamametu_id === '') {
   http_response_code(401);
-  echo json_encode(["ok" => false, "error" => "session_required"]);
+  echo json_encode(["ok" => false, "error" => "session_required",'get'=>$_GET]);
   exit;
 }
 
@@ -35,7 +35,7 @@ if ($user_llamametu_id === '') {
 // Llamada a Parse Cloud
 // ================================
 
-$cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_solotias_calls';
+$cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_solotias_get_calls';
 
 $bodyToParse = json_encode([
   "user_llamametu_id" => $user_llamametu_id,

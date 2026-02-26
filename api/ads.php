@@ -1,6 +1,7 @@
 <?php
 // /api/ads.php
 declare(strict_types=1);
+require_once __DIR__ . "/config.php";
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -23,7 +24,7 @@ if ($host && !in_array($host, $allowedHosts, true)) {
 }
 
 // Params con defaults (según tu spec)
-$service     = $_GET['service'] ?? 'webs';
+$service     = $_GET['service'] ?? '';
 $gender      = $_GET['gender'] ?? 'female';
 $web         = $_GET['web'] ?? 'solotias.com';
 $province_id = $_GET['province_id'] ?? '';
@@ -37,7 +38,7 @@ $longitude = isset($_GET['longitude']) && $_GET['longitude'] !== '' ? (float)$_G
 // Sanitización mínima
 $page  = max(1, $page);
 $limit = min(50, max(1, $limit)); // evita abusos
-$service = in_array($service, ['webs', 'videocalls'], true) ? $service : 'webs';
+$service = in_array($service, ['webs', 'videocalls'], true) ? $service : '';
 $gender  = in_array($gender,  ['female', 'male'], true) ? $gender : 'female';
 
 // Construye payload POST (Parse Cloud Functions suelen ir por POST con JSON)

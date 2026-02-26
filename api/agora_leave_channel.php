@@ -2,7 +2,7 @@
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/config.php';
 
-session_start();
+
 
 $raw = file_get_contents('php://input');
 $body = json_decode($raw, true) ?: [];

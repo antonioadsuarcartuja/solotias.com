@@ -410,10 +410,14 @@ navigator.geolocation.getCurrentPosition(
       setGeoText(label);
       gpsBtn?.classList.remove("gps-pulse");
 
-      //initDynamicAds();
-      initAdsAndSwipe();
-      // ❌ IMPORTANTE: NO recargamos anuncios aquí
-      // (ya no llamamos a initDynamicAds() para evitar doble petición)
+      // 🔥 NUEVO: recargar anuncios con el filtro actual
+      try {
+        if (typeof reloadAdsWithService === "function") {
+          reloadAdsWithService(currentService);
+        }
+      } catch (e) {
+        console.warn("No se pudo recargar anuncios tras GPS:", e);
+      }
 
     } catch {
       setGeoText("Usando ubicación aproximada...");
@@ -477,6 +481,89 @@ navigator.geolocation.getCurrentPosition(
   const adMap = new Map();
   const dotsEl = $("#dots");
   const toast = $("#toast");
+
+    // Placeholder neutro (para no usar img/foto1.jpg)
+  const DEFAULT_AVATAR_PLACEHOLDER =
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(`
+      <svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200" viewBox="0 0 800 1200">
+        <rect width="800" height="1200" fill="#1a1a1a"/>
+        <circle cx="400" cy="420" r="150" fill="#2a2a2a"/>
+        <rect x="180" y="620" width="440" height="360" rx="180" fill="#2a2a2a"/>
+        <text x="50%" y="93%" dominant-baseline="middle" text-anchor="middle"
+              font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial" font-size="34" fill="#6a6a6a">
+          Imagen no disponible
+        </text>
+      </svg>
+    `);
+
+  function showToast(msg, ms = 4500) {
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.remove("hidden");
+    // Reutilizamos un timeout guardado en el propio nodo para evitar solapes
+    if (toast._t) clearTimeout(toast._t);
+    toast._t = setTimeout(() => toast.classList.add("hidden"), ms);
+  }
+
+  function showAdsLoadErrorState(err) {
+    console.warn("[ads] load failed, showing error state:", err);
+
+    adsDynamicEnabled = false;
+    adsPrefetching = false;
+    adsExhausted = true;
+
+    if (!container) return;
+
+    // 1) Limpia el deck (evita que se queden las cards hardcodeadas del HTML)
+    container.innerHTML = "";
+
+    // 2) Inserta una card de aviso (mantiene layout y swipe estable)
+    const card = document.createElement("article");
+    card.className = "swipe-card";
+    card.setAttribute("data-type", "image");
+
+    const img = document.createElement("img");
+    img.src = DEFAULT_AVATAR_PLACEHOLDER;
+    img.alt = "Aviso";
+    card.appendChild(img);
+
+    const fade = document.createElement("div");
+    fade.className = "card-fade";
+    card.appendChild(fade);
+
+    const bottom = document.createElement("div");
+    bottom.className = "overlay-bottom";
+    bottom.innerHTML = `
+      <div class="meta">
+        <div class="meta-row">
+          <div class="name">
+            <span class="name-text">No se pudieron cargar los anuncios</span>
+          </div>
+        </div>
+        <div class="subline">Algo salió mal. Inténtalo de nuevo en unos minutos.</div>
+      </div>
+      <div class="actions">
+        <button class="call-btn is-unavailable" type="button" aria-disabled="true" data-call-mode="video">
+          <span class="call-icon" aria-hidden="true"></span>
+          <span class="call-text">No disponible</span>
+        </button>
+      </div>
+    `;
+    card.appendChild(bottom);
+
+    container.appendChild(card);
+
+    // 3) Refresca arrays internos
+    cards = [card];
+    index = 0;
+
+    // 4) Si tienes dots, los recalculamos
+    if (typeof buildDots === "function") buildDots();
+
+    // 5) Mensaje visible al usuario
+    showToast("No hemos podido cargar los anuncios ahora mismo. Inténtalo de nuevo en unos minutos.", 4500);
+  }
 
   const panel = $("#panel");
   const panelBackdrop = $("#panelBackdrop");
@@ -888,6 +975,10 @@ function createCardElFromAd(ad) {
   if (kind === "video" && item?.video_url) {
     const v = document.createElement("video");
     v.src = item.video_url;
+
+    // Poster: usa thumbnail si viene; si no, intenta una foto; si no, placeholder neutro
+    v.poster = (item.thumbnail_url || item.photo_url || DEFAULT_AVATAR_PLACEHOLDER);
+
     v.loop = true;
     v.muted = true;
     v.playsInline = true;
@@ -906,10 +997,10 @@ function createCardElFromAd(ad) {
     img.alt = `Foto de ${ad?.name || ""}`.trim() || "Foto";
     card.appendChild(img);
   } else {
-    // fallback: placeholder vacío (mantiene layout)
+    // fallback neutro (evita fotos de prueba)
     const img = document.createElement("img");
-    img.src = "img/foto1.jpg";
-    img.alt = "Foto";
+    img.src = DEFAULT_AVATAR_PLACEHOLDER;
+    img.alt = "Foto no disponible";
     card.appendChild(img);
   }
 
@@ -1358,24 +1449,20 @@ async function initDynamicAds() {
       limit: ADS_LIMIT,
     });
 
-    if (ads && ads.length) {
-      adsDynamicEnabled = true;
-      adsPrefetching = false;
-      // render setea adsPage/adsExhausted/seenAdIds
-      renderAdvertisementsIntoDeck(ads);
-      return true;
+    // Si llega vacío también lo tratamos como error de carga usable por UX
+    if (!ads || !ads.length) {
+      throw new Error("Empty ads response");
     }
+
+    adsDynamicEnabled = true;
+    adsPrefetching = false;
+    // render setea adsPage/adsExhausted/seenAdIds
+    renderAdvertisementsIntoDeck(ads);
+    return true;
   } catch (err) {
-    console.warn("[ads] fallback to static cards:", err);
+    showAdsLoadErrorState(err);
+    return false;
   }
-
-  // fallback: keep whatever is in HTML
-  adsDynamicEnabled = false;
-  adsPrefetching = false;
-  adsExhausted = true;
-
-  cards = container ? Array.from(container.querySelectorAll(".swipe-card")) : [];
-  return false;
 }
 
   let index = 0;
@@ -2533,7 +2620,7 @@ async function initAdsAndSwipe() {
   } catch {}
 }
 
-//initAdsAndSwipe();
+initAdsAndSwipe();
 
 
 
@@ -2776,7 +2863,7 @@ function configureCallModal(mode) {
 
     if (footTextSpan) {
       footTextSpan.textContent =
-        "Os llamamos a ambos y os conectamos en directo de forma anónima y privada. Al pulsar 'Iniciar llamada', recibirás una llamada del número 919 999 798. Descuelga y hablad libremente de lo que os apetezca.";
+        "Os llamamos a ambos y os conectamos en directo de forma anónima y privada. Al pulsar 'Iniciar llamada', recibirás una llamada del número 910 285 400. Descuelga y hablad libremente de lo que os apetezca.";
     }
 
     return;
@@ -2820,6 +2907,89 @@ function configureCallModal(mode) {
 
 	const callRoot = document.getElementById("callRoot");
 	const remoteVideo = document.getElementById("remoteVideo");
+  // =========================
+// WAIT UI (60s) sobre el remoto
+// =========================
+let __waitEl = null;
+let __waitSecsEl = null;
+let __waitInterval = null;
+let __waitLeft = 60;
+
+function ensureWaitUI() {
+  if (!remoteVideo) return;
+
+  if (__waitEl && __waitEl.isConnected) return;
+
+  // remoteVideo debe ser relativo para poder superponer
+  if (getComputedStyle(remoteVideo).position === "static") {
+    remoteVideo.style.position = "relative";
+  }
+
+  __waitEl = document.createElement("div");
+  __waitEl.id = "callWait";
+  __waitEl.className = "call-wait hidden";
+  __waitEl.setAttribute("aria-live", "polite");
+
+  __waitEl.innerHTML = `
+    <div class="call-wait__card">
+      <div class="call-wait__spinner" aria-hidden="true"></div>
+      <div class="call-wait__title">Espera un momento…</div>
+      <div class="call-wait__sub">
+        Estamos avisando a la chica para que se una a vuestra sala privada…
+				Dale un momento. Les encanta hacerse desear y seguro que está retocándose para que no puedas apartar la mirada 🔥😉
+      </div>
+      <div class="call-wait__timer">
+        <span class="call-wait__pill">Auto-cuelgue en</span>
+        <span class="call-wait__secs" id="callWaitSecs">60</span>
+        <span class="call-wait__pill">s</span>
+      </div>
+    </div>
+  `;
+
+  remoteVideo.appendChild(__waitEl);
+  __waitSecsEl = __waitEl.querySelector("#callWaitSecs");
+}
+
+function hideWaitUI() {
+  ensureWaitUI();
+  if (__waitInterval) clearInterval(__waitInterval);
+  __waitInterval = null;
+  if (__waitEl) __waitEl.classList.add("hidden");
+}
+
+async function timeoutHangup() {
+  try { await stopAgoraCall(); } catch (e) {}
+  try {
+    if (callRoot) {
+      callRoot.hidden = true;
+      callRoot.classList.add("hidden");
+      callRoot.setAttribute("aria-hidden", "true");
+    }
+    setState("online");
+    document.body.classList.remove("call-active");
+    exitCallAndReturnHome();
+  } catch (e) {}
+}
+
+function showWaitUI(seconds = 60) {
+  ensureWaitUI();
+  hideWaitUI(); // limpia interval previo si lo hubiera
+
+  __waitLeft = Math.max(0, Math.floor(seconds));
+  if (__waitSecsEl) __waitSecsEl.textContent = String(__waitLeft);
+  if (__waitEl) __waitEl.classList.remove("hidden");
+
+  __waitInterval = setInterval(() => {
+    __waitLeft -= 1;
+    if (__waitLeft < 0) __waitLeft = 0;
+    if (__waitSecsEl) __waitSecsEl.textContent = String(__waitLeft);
+
+    if (__waitLeft === 0) {
+      hideWaitUI();
+      timeoutHangup();
+    }
+  }, 1000);
+}
 	const localVideo = document.getElementById("localVideo");
 	const hangupBtn = document.getElementById("hangup");
 
@@ -2879,8 +3049,16 @@ async function openFromCard(card) {
   lastFocus = document.activeElement;
 
   const nameRaw = card?.querySelector(".name-text")?.textContent?.trim() || "María";
+
+  // 1) Preferimos imagen si existe
   const imgEl = card?.querySelector("img");
-  const photo = imgEl?.getAttribute("src") || "";
+  const imgSrc = imgEl?.getAttribute("src") || "";
+
+  // 2) Si es vídeo, usamos el poster como miniatura (si existe)
+  const videoEl = card?.querySelector("video");
+  const posterSrc = videoEl?.getAttribute("poster") || "";
+
+  const resolvedPhoto = imgSrc || posterSrc || DEFAULT_AVATAR_PLACEHOLDER;
 
   // ✅ 1) Leer advertisement_id desde data-ad-id (ya lo tienes en createCardElFromAd)
   const adId = (card?.dataset?.adId || "").trim();
@@ -2891,12 +3069,12 @@ async function openFromCard(card) {
 
   currentProfile = {
     name: nameRaw,
-    photo,
+    photo: resolvedPhoto,
     adId
   };
 
   nameEl.textContent = nameRaw;
-  avatar.src = photo || "img/foto1.jpg";
+  avatar.src = resolvedPhoto;
 
   const mode = card?.querySelector(".call-btn")?.dataset?.callMode || "video";
   configureCallModal(mode);
@@ -2982,112 +3160,168 @@ document.addEventListener("click", (e) => {
 	// ===============================
 
 // CTA principal (AGORA + SMS)
+// CTA principal (AGORA + SMS / DUALCALL VOZ)
 primaryBtn.addEventListener("click", async () => {
-
   if (primaryBtn.dataset.busy === "1") return;
 
-  // 👇 MOSTRAR OVERLAY INSTANTÁNEO
-  showConnectOverlay(
-    "Creando tu sala privada…",
-    "Un momento, estamos conectando la videollamada."
-  );
-
-  // 👇 Forzamos render antes del fetch (muy importante)
-  await new Promise(requestAnimationFrame);
-    // Cancelar llamada
-    if (isCalling) {
-      primaryBtn.dataset.busy = "1";
-
-      try {
-        if (typeof stopAgoraCall === "function") {
-          await stopAgoraCall();
-        }
-
-        if (callRoot) {
-          callRoot.hidden = true;
-          callRoot.classList.add("hidden");
-          callRoot.setAttribute("aria-hidden", "true");
-        }
-
-	setState("online");
-	document.body.classList.remove("call-active");
-	exitCallAndReturnHome();
-
-
-      } catch (err) {
-        console.error(err);
-        setState("online");
-      }
-
-      primaryBtn.dataset.busy = "0";
-      return;
-    }
-
-    // ✅ Validar advertisement_id
-    if (!currentProfile.adId) {
-      headline.textContent = "No se puede iniciar la llamada";
-      sub.textContent = "Falta el identificador del anuncio (advertisement_id).";
-      return;
-    }
-
-
+  // Cancelar llamada (solo aplica al flujo de videollamada Agora)
+  if (isCalling) {
     primaryBtn.dataset.busy = "1";
-
-    // 🟢 MODO VOICE (no toca Agora)
-    if (currentCallMode === "voice") {
-      console.log("Aquí irá la llamada telefónica real");
-      primaryBtn.dataset.busy = "0";
-      return;
-    }
     try {
-      // 1) Crear llamada + enviar SMS
-      const res = await fetch("/api/create_call.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        advertisement_id: currentProfile.adId
-      })
+      hideWaitUI();
 
-      });
-
-      if (!res.ok) throw new Error("Error servidor");
-
-      const data = await res.json();
-
-      // Esperamos: { channel, callerUid, callerToken, inviteUrl, appId? }
-      if (!data.channel || !data.callerToken || typeof data.callerUid === "undefined") {
-        throw new Error("Datos inválidos desde create_call.php");
+      if (typeof stopAgoraCall === "function") {
+        await stopAgoraCall();
       }
 
-		if (!data.appId) throw new Error("Falta appId en create_call.php");
-
-      // 2) Entrar en Agora como usuario que espera
-      await startAgoraCall({
-        appId: data.appId,
-        channel: data.channel,
-        token: data.callerToken,
-        uid: data.callerUid
-      });
-
-      // 3) Mostrar capa de llamada
       if (callRoot) {
-        callRoot.hidden = false;
-        callRoot.classList.remove("hidden");
-        callRoot.setAttribute("aria-hidden", "false");
+        callRoot.hidden = true;
+        callRoot.classList.add("hidden");
+        callRoot.setAttribute("aria-hidden", "true");
       }
 
-      setState("calling");
-		document.body.classList.add("call-active");
-
+      setState("online");
+      document.body.classList.remove("call-active");
+      exitCallAndReturnHome();
     } catch (err) {
       console.error(err);
       setState("online");
+    } finally {
+      primaryBtn.dataset.busy = "0";
+    }
+    return;
+  }
+
+  // ✅ Validar advertisement_id
+  if (!currentProfile.adId) {
+    headline.textContent = "No se puede iniciar la llamada";
+    sub.textContent = "Falta el identificador del anuncio (advertisement_id).";
+    return;
+  }
+
+  primaryBtn.dataset.busy = "1";
+
+  // ==========================
+  // 🟢 MODO VOICE (Asterisk Dual Call)
+  // ==========================
+  if (currentCallMode === "voice") {
+    try {
+      // 🔒 NO tocar el overlay de vídeo. Usamos overlay propio de VOZ.
+      showVoiceConnectOverlay();
+      await new Promise(requestAnimationFrame);
+
+      // user_llamametu_id (sesión o localStorage como ya haces en listados)
+      const userId =
+        window.SoloTIASAuth?.getSession?.()?.user_data?.objectId ||
+        window.session?.user_data?.objectId ||
+        (()=>{
+          try { return localStorage.getItem("solotias_user_llamametu_id") || ""; } catch { return ""; }
+        })();
+
+      if (!String(userId || "").trim()) {
+        console.error("Missing user_llamametu_id");
+        return;
+      }
+
+      // 1) Crear CallRequest en ParseCloud
+      //    (este endpoint lo implementas en backend como proxy a ParseCloud)
+      const createRes = await fetch((window.__DUALCALL_CREATE_URL || "/api/dualcall_create.php"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_llamametu_id: String(userId).trim(),
+          advertisement_destination_id: String(currentProfile.adId).trim()
+        })
+      });
+
+      if (!createRes.ok) throw new Error("dualcall_create_failed");
+      const createData = await createRes.json();
+
+      // Esperamos: { coins_origin, max_duration, call_request_id }
+      const callRequestId = createData?.call_request_id;
+      if (!callRequestId) throw new Error("missing_call_request_id");
+
+      // 2) Lanzar Asterisk (AMI/originate/script) usando call_request_id
+      //    (este endpoint dispara la llamada real en tu servidor)
+      const startRes = await fetch((window.__DUALCALL_START_URL || "/api/dualcall_start.php"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          call_request_id: String(callRequestId).trim()
+        })
+      });
+
+      if (!startRes.ok) throw new Error("dualcall_start_failed");
+      await startRes.json().catch(()=> ({}));
+
+      // opcional: aquí puedes cerrar el sheet vcOverlay si quieres
+      // close();  // (si quieres que el usuario se quede solo con el overlay de VOZ)
+    } catch (err) {
+      console.error(err);
+      hideVoiceConnectOverlay();
       headline.textContent = "Error al iniciar la llamada";
       sub.textContent = "Inténtalo de nuevo.";
     } finally {
       primaryBtn.dataset.busy = "0";
     }
-  });
+    return;
+  }
+
+  // ==========================
+  // 🔵 MODO VIDEO (Agora) — NO CAMBIAR COMPORTAMIENTO
+  // ==========================
+  try {
+    // 👇 Overlay de video (el existente)
+    showConnectOverlay(
+      "Creando tu sala privada…",
+      "Un momento, estamos conectando la videollamada."
+    );
+    await new Promise(requestAnimationFrame);
+
+    // 1) Crear llamada + enviar SMS
+    const res = await fetch("/api/create_call.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ advertisement_id: currentProfile.adId })
+    });
+
+    if (!res.ok) throw new Error("Error servidor");
+
+    const data = await res.json();
+
+    if (!data.channel || !data.callerToken || typeof data.callerUid === "undefined") {
+      throw new Error("Datos inválidos desde create_call.php");
+    }
+    if (!data.appId) throw new Error("Falta appId en create_call.php");
+
+    // 2) Entrar en Agora como usuario que espera
+    await startAgoraCall({
+      appId: data.appId,
+      channel: data.channel,
+      token: data.callerToken,
+      uid: data.callerUid
+    });
+
+    // 3) Mostrar capa de llamada
+    if (callRoot) {
+      callRoot.hidden = false;
+      callRoot.classList.remove("hidden");
+      callRoot.setAttribute("aria-hidden", "false");
+    }
+
+    setState("calling");
+    document.body.classList.add("call-active");
+    showWaitUI(60);
+
+  } catch (err) {
+    console.error(err);
+    setState("online");
+    headline.textContent = "Error al iniciar la llamada";
+    sub.textContent = "Inténtalo de nuevo.";
+  } finally {
+    primaryBtn.dataset.busy = "0";
+  }
+});
 
   // Colgar desde controles
   hangupBtn?.addEventListener("click", async () => {
@@ -5093,10 +5327,12 @@ function goToStore() {
     return call_type === "videocall" ? "Videollamada" : "Llamada";
   }
 
-  function safeImg(url){
-    const u = (url || "").trim();
-    return u || "img/foto1.jpg"; // fallback local (no rompe layout)
-  }
+function safeImg(url){
+  const u = (url || "").trim();
+  if (u) return u;
+
+  return "img/icon-192.png";
+}
 
   function createDaySepEl(text){
     const wrap = document.createElement("div");
@@ -5146,26 +5382,29 @@ function goToStore() {
     return row;
   }
 
-  async function fetchPage(p){
-    const userId = getUserId();
-    if (!userId) throw new Error("missing_user_llamametu_id_front");
+async function fetchPage(p){
+  const userId = getUserId();
+  if (!userId) throw new Error("missing_user_llamametu_id_front");
 
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_llamametu_id: userId, page: p })
-    });
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_llamametu_id: userId, page: p })
+  });
 
-    const raw = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(raw?.error || "calls_http_error");
+  const raw = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(raw?.error || "calls_http_error");
 
-    // Tu proxy devuelve directamente el result (ok/page/calls)
-    if (!raw || raw.ok !== true || !Array.isArray(raw.calls)) {
-      throw new Error("calls_invalid_payload");
-    }
-    return raw;
+  // 🔥 IMPORTANTE: tu API devuelve { result: {...} }
+  const data = raw?.result || raw;
+
+  if (!data || data.ok !== true || !Array.isArray(data.calls)) {
+    throw new Error("calls_invalid_payload");
   }
+
+  return data;
+}
 
   function sortCallsDesc(calls){
     return calls.slice().sort((a,b)=>{
@@ -5344,6 +5583,49 @@ function hideConnectOverlay() {
   document.documentElement.classList.remove("no-scroll");
   document.body.classList.remove("no-scroll");
 }
+
+function showVoiceConnectOverlay() {
+  const el = document.getElementById("voiceConnectOverlay");
+  if (!el) return;
+
+  el.hidden = false;
+  el.setAttribute("aria-hidden", "false");
+  document.documentElement.classList.add("no-scroll");
+  document.body.classList.add("no-scroll");
+}
+
+function hideVoiceConnectOverlay() {
+  const el = document.getElementById("voiceConnectOverlay");
+  if (!el) return;
+
+  el.hidden = true;
+  el.setAttribute("aria-hidden", "true");
+  document.documentElement.classList.remove("no-scroll");
+  document.body.classList.remove("no-scroll");
+}
+
+// cerrar con botón + click fuera + ESC
+(function bindVoiceConnectOverlayClose(){
+  const el = document.getElementById("voiceConnectOverlay");
+  const btn = document.getElementById("voiceConnectCloseBtn");
+  if (!el || !btn) return;
+
+  btn.addEventListener("click", hideVoiceConnectOverlay);
+
+  el.addEventListener("click", (e) => {
+    if (e.target === el || e.target.classList?.contains("connect-ov__scrim")) {
+      hideVoiceConnectOverlay();
+    }
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && el && !el.hidden) {
+      e.preventDefault();
+      hideVoiceConnectOverlay();
+    }
+  });
+})();
+
 // ==============================
 // OTP AUTO FILL (iOS + Android)
 // ==============================

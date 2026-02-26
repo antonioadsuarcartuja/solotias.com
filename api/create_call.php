@@ -21,6 +21,15 @@ $appId = "7a5fc3e6dd6847babca324129c881cbc";
 $appCertificate = "e9973d6b694a412baf82e47acf0b1d9c";
 
 // ==========================
+// ASTERISK NOTIFY-CALL
+// ==========================
+// IMPORTANTE:
+// - Esta URL debe ser accesible desde ESTE servidor (donde corre create_call.php).
+// - Si este servidor NO es el mismo que Asterisk, abre en AWS el puerto 80 SOLO para la IP pública de este servidor.
+$ASTERISK_NOTIFY_URL = "http://46.137.62.42/notify-call.php";
+$ASTERISK_NOTIFY_TOKEN = "7f8a93Kx29LmQp2025SecureNotify";
+
+// ==========================
 // VALIDAR ENTRADA
 // ==========================
 $raw = file_get_contents('php://input');
@@ -110,8 +119,62 @@ if ($cloudResult === false || $httpCode >= 400) {
 $cloudJson = json_decode($cloudResult, true);
 
 // ==========================
+// LANZAR LLAMADA EN ASTERISK (server-to-server)
+// ==========================
+// Parse (tu ejemplo real) devuelve el número aquí: smsCloud.result.phone
+// En create_call.php lo recibimos como $cloudJson['result']['phone']
+$asteriskCall = null;
+
+$phoneFromParse = '';
+if (is_array($cloudJson)) {
+  $phoneFromParse = (string)($cloudJson['result']['phone'] ?? $cloudJson['phone'] ?? '');
+}
+
+// Normalizar: dejar solo dígitos (quitamos +, espacios, etc.)
+$phoneDigits = preg_replace('/\D+/', '', $phoneFromParse);
+
+// Si hay teléfono, llamamos a Asterisk.
+// OJO: si Asterisk no es accesible (SG/firewall), aquí verás timeout/error en $asteriskCall.
+if ($phoneDigits !== '') {
+  $notifyPayload = json_encode([
+    'phone' => $phoneDigits,
+    'token' => $ASTERISK_NOTIFY_TOKEN
+  ], JSON_UNESCAPED_UNICODE);
+
+  $ch2 = curl_init($ASTERISK_NOTIFY_URL);
+  curl_setopt_array($ch2, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT => 8,
+    CURLOPT_CONNECTTIMEOUT => 4,
+    CURLOPT_POST => true,
+    CURLOPT_HTTPHEADER => [
+      'Content-Type: application/json'
+    ],
+    CURLOPT_POSTFIELDS => $notifyPayload,
+  ]);
+
+  $notifyRes = curl_exec($ch2);
+  $notifyHttp = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+  $notifyErr = curl_error($ch2);
+  curl_close($ch2);
+
+  $asteriskCall = [
+    'httpCode'  => $notifyHttp,
+    'error'     => $notifyErr ?: null,
+    'response'  => $notifyRes
+  ];
+} else {
+  $asteriskCall = [
+    'skipped' => true,
+    'reason'  => 'Parse no devolvió phone (result.phone)'
+  ];
+}
+
+// ==========================
 // RESPUESTA FINAL
 // ==========================
+// RECOMENDACIÓN: no devuelvas el phone al cliente.
+// Ahora mismo cloudJson incluye el phone; si quieres ocultarlo, coméntame y lo limpiamos.
 echo json_encode([
   'appId' => $appId,
   'callId' => $callId,
@@ -120,5 +183,9 @@ echo json_encode([
   'callerToken' => $callerToken,
   'expireAt' => $privilegeExpire,
   'inviteUrl' => $inviteUrl,
-  'smsCloud' => $cloudJson ?? $cloudResult
+ // 'smsCloud' => $cloudJson ?? $cloudResult,
+
+  // Debug: te permite ver si Asterisk aceptó la llamada.
+  // Cuando confirmes que funciona, lo puedes quitar o dejar solo 'httpCode'.
+  //'asteriskCall' => $asteriskCall
 ], JSON_UNESCAPED_UNICODE);

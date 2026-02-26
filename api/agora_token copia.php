@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . "/config.php";
 // api/agora_token.php
 header('Content-Type: application/json; charset=utf-8');
 
