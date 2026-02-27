@@ -382,7 +382,7 @@ function close(dismiss = true){
     setTimeout(() => btnClose.focus(), 0);
   }
 
-function requestDeviceGeo() {
+function requestDeviceGeo(show_ads) {
   if (!geoLine) return;
 
   setGeoText("Obteniendo tu ubicación...");
@@ -411,12 +411,15 @@ navigator.geolocation.getCurrentPosition(
       gpsBtn?.classList.remove("gps-pulse");
 
       // 🔥 NUEVO: recargar anuncios con el filtro actual
-      try {
-        if (typeof reloadAdsWithService === "function") {
-          reloadAdsWithService(currentService);
+      if (show_ads)
+      {
+        try {
+          if (typeof reloadAdsWithService === "function") {
+            reloadAdsWithService(currentService);
+          }
+        } catch (e) {
+          console.warn("No se pudo recargar anuncios tras GPS:", e);
         }
-      } catch (e) {
-        console.warn("No se pudo recargar anuncios tras GPS:", e);
       }
 
     } catch {
@@ -458,7 +461,7 @@ navigator.geolocation.getCurrentPosition(
       return;
     }
 
-    requestDeviceGeo();
+    requestDeviceGeo(false);
   }
 
   // Si deneg y pulsa botn: NO pedir GPS, solo popup + mantener IP
@@ -469,7 +472,7 @@ navigator.geolocation.getCurrentPosition(
       loadIpLocality();
       return;
     }
-    requestDeviceGeo();
+    requestDeviceGeo(true);
   }
 
   gpsBtn?.addEventListener("click", onGpsButtonClick);
@@ -898,6 +901,7 @@ async function fetchAdvertisements({
   province_id = "",
   page = 1,
   limit = 20,
+  send_location = true,
 } = {}) {
 
   const qs = new URLSearchParams({
@@ -912,7 +916,7 @@ async function fetchAdvertisements({
   if (province_id) qs.set("province_id", province_id);
 
   // ✅ GEO automática si existe
-  if (window.__geo.latitude && window.__geo.longitude) {
+  if (send_location && window.__geo.latitude && window.__geo.longitude) {
     qs.set("latitude", window.__geo.latitude);
     qs.set("longitude", window.__geo.longitude);
   }
@@ -1417,13 +1421,20 @@ if (ctaIco) {
 if (ctaBtn) {
   ctaBtn.setAttribute("aria-label", (service === "videocalls") ? "Videollamada" : "Llamar");
 
+  // IMPORTANTE: aunque el anuncio NO esté disponible (rojo), el botón debe abrir el modal.
+  // Por eso NO lo marcamos como aria-disabled="true" (solo lo pintamos en rojo).
   if (available) {
     ctaBtn.classList.remove("is-unavailable");
-    ctaBtn.setAttribute("aria-disabled", "false");
   } else {
     ctaBtn.classList.add("is-unavailable");
-    ctaBtn.setAttribute("aria-disabled", "true");
   }
+  ctaBtn.setAttribute("aria-disabled", "false");
+  // 🔗 Guardamos el anuncio actual del perfil para abrir el modal sin depender de cards/índices
+  try { window.__PROFILE_CURRENT_AD__ = ad; } catch {}
+
+  // 🔧 Indicamos el modo para el modal (video/voice)
+  ctaBtn.dataset.callMode = (service === "videocalls") ? "video" : "voice";
+
 }
 
 if (ctaTitle) {
@@ -1447,6 +1458,7 @@ async function initDynamicAds() {
       gender: DEFAULT_GENDER,
       page: 1,
       limit: ADS_LIMIT,
+      send_location: false,
     });
 
     // Si llega vacío también lo tratamos como error de carga usable por UX
@@ -2998,6 +3010,65 @@ function showWaitUI(seconds = 60) {
 	let lastFocus = null;
 	let currentProfile = {};
 	let isCalling = false;
+	let currentAvailable = true;
+
+	function isLogged(){
+		try{ return !!window.SoloTIASAuth?.isLogged?.(); }catch{ return false; }
+	}
+
+	function applyAvailabilityUI(){
+		// Guardas
+		if (!avatarWrap || !pill || !headline || !sub || !primaryBtn || !primaryText) return;
+
+		// Reset clases
+		pill.classList.remove("is-unavailable");
+		primaryBtn.classList.remove("is-unavailable");
+		primaryBtn.removeAttribute("data-unavailable");
+
+		if (currentAvailable) {
+			avatarWrap.dataset.status = "online";
+			pill.textContent = "En línea ahora";
+
+			// Texto headline/sub/primary depende del modo
+			if (currentCallMode === "voice") {
+				headline.textContent = "Está disponible para llamada";
+				sub.textContent = "Inicia la llamada y espera a que se una.";
+				primaryText.textContent = "Iniciar llamada";
+			} else {
+				headline.textContent = "Está disponible para videollamada";
+				sub.textContent = "Inicia la llamada y espera a que se una.";
+				primaryText.textContent = "Iniciar videollamada";
+			}
+
+			// Si está logueado, botón activo; si no, refreshSessionUI lo desactiva
+			window.__VC_AD_AVAILABLE__ = true;
+			window.refreshSessionUI?.();
+			return;
+		}
+
+		// 🔴 NO disponible: el modal se abre igual, pero todo se pinta en rojo
+		avatarWrap.dataset.status = "unavailable";
+		pill.classList.add("is-unavailable");
+		pill.textContent = "Está desconectada";
+
+		if (currentCallMode === "voice") {
+			headline.textContent = "No está disponible para llamada";
+			sub.textContent = "Inténtalo más tarde.";
+		} else {
+			headline.textContent = "No está disponible para videollamada";
+			sub.textContent = "Inténtalo más tarde.";
+		}
+
+		// Mantener regla de guest: botón gris bloqueado como ahora
+		// Si está logueado: botón rojo que no hace nada
+		window.__VC_AD_AVAILABLE__ = false;
+		window.refreshSessionUI?.();
+		if (isLogged()) {
+			primaryBtn.classList.add("is-unavailable");
+			primaryBtn.dataset.unavailable = "1";
+			primaryText.textContent = "Inténtalo más tarde";
+		}
+	}
 
 	function lockScroll() {
 		document.documentElement.classList.add("no-scroll");
@@ -3022,18 +3093,8 @@ function showWaitUI(seconds = 60) {
 			return;
 		}
 
-    isCalling = false;
-    pill.textContent = "En línea ahora";
-
-    if (currentCallMode === "voice") {
-      headline.textContent = "Está disponible para llamada";
-      sub.textContent = "Inicia la llamada y espera a que se una.";
-      primaryText.textContent = "Iniciar llamada";
-    } else {
-      headline.textContent = "Está disponible para videollamada";
-      sub.textContent = "Inicia la llamada y espera a que se una.";
-      primaryText.textContent = "Iniciar videollamada";
-    }
+		isCalling = false;
+		applyAvailabilityUI();
 
   }
   	function close() {
@@ -3044,6 +3105,77 @@ function showWaitUI(seconds = 60) {
 		}, 200);
 		unlockScroll();
 	}
+
+
+  // Abrir el modal desde un anuncio (usado por el botón del perfil)
+  async function openFromAd(ad, callModeOverride) {
+    if (!ad) return;
+
+    lastFocus = document.activeElement;
+
+    const nameRaw = String(ad?.name || "María").trim();
+
+    // Foto preferida: principal o primera
+    let resolvedPhoto = DEFAULT_AVATAR_PLACEHOLDER;
+    try {
+      const p = getPrincipalPhoto(ad);
+      resolvedPhoto =
+        p?.photo_url ||
+        p?.thumbnail_url ||
+        p?.poster_url ||
+        DEFAULT_AVATAR_PLACEHOLDER;
+    } catch {}
+
+    const adId = String(ad?.objectId || ad?.id || "").trim();
+
+    currentProfile = {
+      name: nameRaw,
+      photo: resolvedPhoto,
+      adId,
+      available: !!ad?.available
+    };
+
+    currentAvailable = !!currentProfile.available;
+
+    nameEl.textContent = nameRaw;
+    avatar.src = resolvedPhoto;
+
+    const mode =
+      callModeOverride ||
+      (normalizeService(ad?.service) === "videocalls" ? "video" : "voice");
+
+    configureCallModal(mode);
+
+    if (!adId) {
+      headline.textContent = "Falta el ID del anuncio";
+      sub.textContent =
+        "Este perfil no tiene advertisement_id. No se puede enviar la invitación por SMS.";
+    } else {
+      setState("online");
+    }
+
+    if (callRoot) {
+      callRoot.hidden = true;
+      callRoot.classList.add("hidden");
+      callRoot.setAttribute("aria-hidden", "true");
+    }
+    if (remoteVideo) remoteVideo.innerHTML = "";
+    if (localVideo) localVideo.innerHTML = "";
+
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    overlay.classList.add("is-open");
+
+    await window.SoloTIASAuth?.refreshUserData?.({ silent: true });
+
+    window.refreshSessionUI?.();
+    applyAvailabilityUI();
+
+    lockScroll();
+  }
+
+  // Exponemos helper por si lo necesitas en otros sitios
+  try { window.openCallSheetFromAd = openFromAd; } catch {}
 
 async function openFromCard(card) {
   lastFocus = document.activeElement;
@@ -3070,8 +3202,11 @@ async function openFromCard(card) {
   currentProfile = {
     name: nameRaw,
     photo: resolvedPhoto,
-    adId
+    adId,
+    available: card?.dataset?.available !== "false"
   };
+
+	currentAvailable = !!currentProfile.available;
 
   nameEl.textContent = nameRaw;
   avatar.src = resolvedPhoto;
@@ -3101,7 +3236,10 @@ async function openFromCard(card) {
 
   // refresca sesión (tal y como ya lo tenías)
   await window.SoloTIASAuth?.refreshUserData?.({ silent: true });
+
+  // refresca UI (guest/logged) y luego pinta disponibilidad (verde/rojo)
   window.refreshSessionUI?.();
+  applyAvailabilityUI();
 
   lockScroll();
 }
@@ -3111,12 +3249,15 @@ document.addEventListener("click", (e) => {
   const btn = e.target.closest(".call-btn");
   if (!btn) return;
 
+  // Este listener es SOLO para botones dentro de las cartas deslizantes.
+  const card = btn.closest(".swipe-card");
+  if (!card) return;
+
   // ✅ evita que el tap de la card dispare toggleSoundActive()
   e.preventDefault();
   e.stopPropagation();
 
-  const card = btn.closest(".swipe-card");
-  if (card?.dataset?.available === "false" || btn.getAttribute("aria-disabled") === "true") return;
+  // IMPORTANTE: aunque esté en rojo (no disponible), debe abrir el modal.
 
   window.forceMuteActiveCardVideo?.();
   openFromCard(card);
@@ -3131,27 +3272,23 @@ document.addEventListener("click", (e) => {
   // ===============================
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".profile-cta .call-btn");
-
     if (!btn) return;
 
-    // si está deshabilitado, no hacemos nada
-    if (btn.getAttribute("aria-disabled") === "true") return;
+    // Aunque esté en rojo, debe abrir el modal
+    e.preventDefault();
+    e.stopPropagation();
 
-    // usamos la card que abrió el perfil (se setea en openPanelFromCard)
-    const card =
-      typeof lastOpenedCardIndex === "number" && cards?.[lastOpenedCardIndex]
-        ? cards[lastOpenedCardIndex]
-        : null;
+    // ✅ No dependemos de lastOpenedCardIndex/copies: usamos el anuncio actual del perfil
+    const ad = (() => {
+      try { return window.__PROFILE_CURRENT_AD__ || null; } catch { return null; }
+    })();
 
-    if (!card) return;
+    if (!ad) return;
 
-    // seguridad extra: si la card dice no disponible, no abrimos
-    const cardBtn = card.querySelector(".call-btn");
-    if (card?.dataset?.available === "false" || cardBtn?.getAttribute("aria-disabled") === "true") return;
+    const mode = btn.dataset.callMode || (normalizeService(ad?.service) === "videocalls" ? "video" : "voice");
 
-    // abre el MISMO modal que el botón de la carta
     window.forceMuteActiveCardVideo?.();
-    openFromCard(card);
+    openFromAd(ad, mode);
   });
 
 
@@ -3162,6 +3299,12 @@ document.addEventListener("click", (e) => {
 // CTA principal (AGORA + SMS)
 // CTA principal (AGORA + SMS / DUALCALL VOZ)
 primaryBtn.addEventListener("click", async () => {
+  // 🔴 Si el anuncio no está disponible y el usuario está logueado,
+  // el botón se muestra en rojo "Inténtalo más tarde" y NO hace nada.
+  if (primaryBtn.dataset.unavailable === "1") {
+    return;
+  }
+
   if (primaryBtn.dataset.busy === "1") return;
 
   // Cancelar llamada (solo aplica al flujo de videollamada Agora)
