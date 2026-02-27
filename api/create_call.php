@@ -71,6 +71,10 @@ $callerToken = RtcTokenBuilder2::buildTokenWithUid(
 
 $inviteUrl = 'https://solotias.com/?call=' . urlencode($callId);
 
+$user_llamametu_id = isset($_SESSION['user_llamametu_id'])
+  ? trim((string)$_SESSION['user_llamametu_id'])
+  : '';
+
 // ==========================
 // ENVIAR SMS (vía Parse Cloud)
 // ==========================
@@ -78,7 +82,9 @@ $inviteUrl = 'https://solotias.com/?call=' . urlencode($callId);
 $cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_solotias_send_sms';
 
 $payload = json_encode([
+  'user_llamametu_id' => $user_llamametu_id,
   'advertisement_id' => $advertisement_id,
+  'advertisement_destination_id' => $advertisement_id,
   'message'          => 'Tienes una videollamada: ' . $inviteUrl,
   'channel'          => $channel,
   'caller_uid'       => $callerUid
