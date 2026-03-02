@@ -5334,11 +5334,11 @@ window.refreshSessionUI = function refreshSessionUI(){
           <span class="coins-loading">
             <span>Dispones de coins</span>
             <span class="coins-spinner" aria-hidden="true"></span>
-            <span>· comprar más fichas</span>
+            <span>· comprar más créditos</span>
           </span>
         `;
       } else {
-        vcCoinsBtn.textContent = `Dispones de coins: ${hasCoins ? coins : "—"} · comprar más fichas`;
+        vcCoinsBtn.textContent = `Dispones de coins: ${hasCoins ? coins : "—"} · comprar más créditos`;
       }
     } else {
       vcMsgBtn.hidden = false;
@@ -5791,7 +5791,7 @@ try {
           </div>
 
           <div class="listados-right">
-            <span class="listados-badge">${coins} Fichas</span>
+            <span class="listados-badge">${coins} Créditos</span>
           </div>
 
         </div>

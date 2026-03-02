@@ -338,7 +338,7 @@ function renderPacks() {
 
         <div class="shop-card-line">
           <img src="tienda/icons/fichas.svg" alt="" class="icon-inline">
-          <b>Fichas:</b> ${escapeHtml(String(p.coins))}
+          <b>Créditos:</b> ${escapeHtml(String(p.coins))}
         </div>
 
         <div class="shop-card-line">

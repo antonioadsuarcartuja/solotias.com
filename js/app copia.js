@@ -4169,7 +4169,7 @@ function goToStore() {
             <div class="listados-sub">${dateTxt} · ${dur}</div>
           </div>
           <div class="listados-right">
-            <span class="listados-badge">${coins} Fichas</span>
+            <span class="listados-badge">${coins} Créditos</span>
           </div>
         </div>
       </div>
