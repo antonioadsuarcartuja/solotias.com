@@ -71,10 +71,6 @@ $callerToken = RtcTokenBuilder2::buildTokenWithUid(
 
 $inviteUrl = 'https://solotias.com/?call=' . urlencode($callId);
 
-$user_llamametu_id = isset($_SESSION['user_llamametu_id'])
-  ? trim((string)$_SESSION['user_llamametu_id'])
-  : '';
-
 // ==========================
 // ENVIAR SMS (vía Parse Cloud)
 // ==========================
@@ -82,9 +78,7 @@ $user_llamametu_id = isset($_SESSION['user_llamametu_id'])
 $cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_solotias_send_sms';
 
 $payload = json_encode([
-  'user_llamametu_id' => $user_llamametu_id,
   'advertisement_id' => $advertisement_id,
-  'advertisement_destination_id' => $advertisement_id,
   'message'          => 'Tienes una videollamada: ' . $inviteUrl,
   'channel'          => $channel,
   'caller_uid'       => $callerUid
@@ -123,6 +117,16 @@ if ($cloudResult === false || $httpCode >= 400) {
 }
 
 $cloudJson = json_decode($cloudResult, true);
+
+// ==========================
+// ✅ NUEVO: LEER max_duration DE PARSE CLOUD
+// ==========================
+// Tu ejemplo real lo devuelve a nivel raíz: cloudJson['max_duration']
+// Pero por robustez también miramos cloudJson['result']['max_duration'] por si lo mueves en el futuro.
+$maxDuration = 0;
+if (is_array($cloudJson)) {
+  $maxDuration = (int)($cloudJson['max_duration'] ?? $cloudJson['result']['max_duration'] ?? 0);
+}
 
 // ==========================
 // LANZAR LLAMADA EN ASTERISK (server-to-server)
@@ -189,9 +193,13 @@ echo json_encode([
   'callerToken' => $callerToken,
   'expireAt' => $privilegeExpire,
   'inviteUrl' => $inviteUrl,
- // 'smsCloud' => $cloudJson ?? $cloudResult,
+
+  // ✅ NUEVO: devolver max_duration al cliente
+  'max_duration' => $maxDuration,
+
+  // 'smsCloud' => $cloudJson ?? $cloudResult,
 
   // Debug: te permite ver si Asterisk aceptó la llamada.
   // Cuando confirmes que funciona, lo puedes quitar o dejar solo 'httpCode'.
-  //'asteriskCall' => $asteriskCall
+  // 'asteriskCall' => $asteriskCall
 ], JSON_UNESCAPED_UNICODE);

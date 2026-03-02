@@ -1752,8 +1752,8 @@ body.auth-open{
   z-index: 0;
 }
 
-/* Botón rojo SIEMPRE anclado a la derecha y con TODO el alto */
-.listados-row__delete{
+/* Acción (OnLine/OffLine) anclada a la derecha y con TODO el alto */
+.listados-row__action{
   position: absolute;
   top: 0;
   right: 0;
@@ -1761,15 +1761,18 @@ body.auth-open{
 
   width: 112px;
   border: 0;
-  background: #ef4444;
   color: #fff;
   font-weight: 900;
 
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
 }
+
+.listados-row__action.is-online{ background: #22c55e; }
+.listados-row__action.is-offline{ background: #ef4444; }
+/* Acción única para Listados: Eliminar (siempre rojo) */
+.listados-row__action.is-delete{ background: #ef4444; }
 
 /* Parte frontal (lo que arrastras) */
 .listados-row__fg{
@@ -2798,10 +2801,38 @@ body{
     contain: layout paint;
   }
 
-  /* Nada puede escaparse por ancho */
-  .desktop-phone__screen *{
-    max-width: 100%;
-  }
+/* Nada se escapa por ancho, pero NO limites videos (Agora/WebRTC) */
+.desktop-phone__screen :where(*:not(video)){
+  max-width: 100%;
+}
+
+/* ===== Agora Call dentro del marco: igual que responsive ===== */
+
+/* Remote (cliente) debe rellenar todo el marco */
+.desktop-phone__screen #remoteVideo,
+.desktop-phone__screen #remoteVideo > div,
+.desktop-phone__screen #remoteVideo video{
+  width: 100% !important;
+  height: 100% !important;
+  display: block !important;
+  object-fit: cover !important;          /* igual que la mayoría de móviles */
+  object-position: center center !important;
+}
+
+/* Local (tú) NO puede depender de vw del monitor */
+.desktop-phone__screen .call-local{
+  width: 30% !important;                 /* 30% del marco (≈ como 30vw en móvil) */
+  max-width: 160px !important;
+  min-width: 120px !important;
+}
+
+/* Controles visibles dentro del marco */
+.desktop-phone__screen .call-controls{
+  z-index: 5;
+}
+.desktop-phone__screen .call-local{ z-index: 4; }
+.desktop-phone__screen .call-remote{ z-index: 1; }
+
 
   /* =========================
      1) ENCERRAR TODO LO "fixed"
@@ -3298,4 +3329,95 @@ a.name-text.seo-profile-link:hover{
   z-index: 1;
 }
 
+/* =========================
+   LISTADOS: status + icono + name/age (NEW)
+   ========================= */
 
+.listados-avatarWrap{
+  position: relative;
+  flex: 0 0 auto; /* respeta el layout existente */
+}
+
+/* Punto de estado (verde/rojo) arriba derecha del avatar */
+.listados-status{
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid #fff; /* borde blanco encima de la foto */
+  z-index: 2;
+}
+.listados-status.is-online{ background: #22c55e; }
+.listados-status.is-offline{ background: #ef4444; }
+
+/* Fila: icono + nombre/edad */
+.listados-typeRow{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Icono llamada/videollamada */
+.listados-callIcon{
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+/* Nombre + edad */
+.listados-nameAge{
+  font-weight: 900; /* igual que listados-type */
+}
+
+
+
+
+/* ===== Listados: avatar + estado ===== */
+.listados-avatarWrap{
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+}
+
+.listados-avatarWrap .listados-avatar{
+  width: 100%;
+  height: 100%;
+}
+
+.listados-status{
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(0,0,0,.18);
+}
+
+.listados-status.is-online{ background: #22c55e; }
+.listados-status.is-offline{ background: #ef4444; }
+
+/* ===== Listados: línea superior (icono + nombre edad) ===== */
+.listados-typeRow{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.listados-callIcon{
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
+.listados-nameAge{
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+/* Listados: avatar is tappable (opens profile) */
+.listados-avatarWrap, .listados-avatar { cursor: default; }

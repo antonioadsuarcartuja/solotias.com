@@ -1188,7 +1188,7 @@ async function prefetchNextAdsPageIfNeeded() {
   }
 }
 
-function enableListadosSwipeToDelete(listRootEl, { onDelete } = {}) {
+function enableListadosSwipeAction(listRootEl, { onAction } = {}) {
   const ACTION_W = 112; // Debe coincidir con el CSS
   let startX = 0;
   let startY = 0;
@@ -1214,16 +1214,16 @@ function enableListadosSwipeToDelete(listRootEl, { onDelete } = {}) {
     }
   });
 
-  // Click en botón rojo "Eliminar"
+  // Click en acción (Eliminar)
   listRootEl.addEventListener("click", (e) => {
-    const delBtn = e.target.closest(".listados-row__delete");
-    if (!delBtn) return;
+    const btn = e.target.closest(".listados-row__action");
+    if (!btn) return;
 
-    const row = delBtn.closest(".listados-row");
+    const row = btn.closest(".listados-row");
     if (!row) return;
 
     const id = row.dataset.rowId || "";
-    onDelete?.(id, row);
+    onAction?.(id, row, btn);
   });
 
   listRootEl.addEventListener("pointerdown", (e) => {
@@ -1240,6 +1240,8 @@ function enableListadosSwipeToDelete(listRootEl, { onDelete } = {}) {
     dx = 0;
     dragging = false;
 
+    fg.style.transition = "";
+    fg.style.transform = "";
     fg.setPointerCapture?.(e.pointerId);
   });
 
@@ -1253,11 +1255,19 @@ function enableListadosSwipeToDelete(listRootEl, { onDelete } = {}) {
     const my = e.clientY - startY;
 
     if (!dragging) {
-      if (Math.abs(mx) < 8) return; // umbral mínimo
-      if (Math.abs(my) > Math.abs(mx)) {
-        activeRow = null; // scroll vertical
+      const ax = Math.abs(mx);
+      const ay = Math.abs(my);
+
+      // Evitar "parpadeos" al hacer scroll: solo iniciamos swipe si es claramente horizontal
+      if (ax < 10) return; // umbral mínimo
+      if (ay > 12 && ay >= ax) {
+        // gesto vertical -> no swipe
+        try { fg.releasePointerCapture?.(e.pointerId); } catch {}
+        activeRow = null;
         return;
       }
+      if (ax <= ay + 6) return; // no es suficientemente horizontal
+
       dragging = true;
       fg.style.transition = "none";
     }
@@ -1292,31 +1302,166 @@ function enableListadosSwipeToDelete(listRootEl, { onDelete } = {}) {
   listRootEl.addEventListener("pointerup", endGesture);
   listRootEl.addEventListener("pointercancel", endGesture);
 }
-// ===== Swipe-to-delete Listados =====
+
+// Backward compat (por si algún sitio lo llama todavía)
+const enableListadosSwipeToDelete = enableListadosSwipeAction;
+
+
+
+// ===== Swipe action Listados =====
 
 let listadosSwipeReady = false;
 
 function initListadosSwipe() {
+
   if (listadosSwipeReady) return;
 
   const list = document.getElementById("listadosList");
   if (!list) return;
 
-  enableListadosSwipeToDelete(list, {
-    onDelete: (id, row) => {
-      if (row) {
-        row.style.transition = "opacity 0.2s ease";
-        row.style.opacity = "0";
-        setTimeout(() => {
-          row.remove();
-        }, 200);
+async function hideCallOnServer(callId) {
+  const userId =
+    window.SoloTIASAuth?.getSession?.()?.user_data?.objectId ||
+    window.session?.user_data?.objectId ||
+    (() => {
+      try { return localStorage.getItem("solotias_user_llamametu_id") || ""; } catch { return ""; }
+    })();
+
+  if (!userId) throw new Error("missing_user_llamametu_id_front");
+  if (!callId) throw new Error("missing_call_id_front");
+
+  const res = await fetch("/api/hide_call.php", {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_llamametu_id: userId,
+      call_id: callId
+    }),
+    credentials: "same-origin"
+  });
+
+  const text = await res.text();
+  let data;
+  try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+  if (!res.ok || data?.ok === false) {
+    console.error("[Listados] hide_call HTTP error:", res.status, data);
+    throw new Error(data?.error || "hide_call_http_error");
+  }
+
+  return data;
+}
+
+  function cleanupEmptyDaySeparators(listEl) {
+    if (!listEl) return;
+    const days = Array.from(listEl.querySelectorAll(".listados-day"));
+    days.forEach((dayEl) => {
+      // Si no hay ninguna fila hasta el siguiente separador, eliminamos el separador
+      let cur = dayEl.nextElementSibling;
+      let hasRow = false;
+      while (cur) {
+        if (cur.classList.contains("listados-day")) break;
+        if (cur.classList.contains("listados-row")) { hasRow = true; break; }
+        cur = cur.nextElementSibling;
+      }
+      if (!hasRow) dayEl.remove();
+    });
+  }
+
+  enableListadosSwipeAction(list, {
+    onAction: async (id, row) => {
+      // id = call_id (objectId)
+      try {
+        // cerrar visualmente
+        row?.classList?.remove("is-open");
+
+        // UI optimista: ocultamos primero
+        row.style.display = "none";
+
+        await hideCallOnServer(id);
+
+        // quitar del DOM
+        row.remove();
+
+        // limpiar separadores vacíos y estado vacío
+        cleanupEmptyDaySeparators(list);
+        const hasRows = !!list.querySelector(".listados-row");
+        if (!hasRows) {
+          try { showEmpty(true); } catch {}
+        }
+
+        // limpiar caché local si aplica
+        try { callById?.delete?.(id); } catch {}
+
+        window.showToast?.("Registro eliminado.", 1800);
+      } catch (e) {
+        console.error("[Listados] delete error:", e);
+        // rollback UI
+        try { row.style.display = ""; } catch {}
+        window.showToast?.("No se pudo eliminar. Inténtalo de nuevo.", 2500);
       }
     }
   });
 
   listadosSwipeReady = true;
 }
+
 window.initListadosSwipe = initListadosSwipe;
+
+let listadosProfileTapReady = false;
+
+function initListadosProfileTap() {
+  const list = document.getElementById("listadosList");
+  if (!list) return;
+
+  // Evitar enganchar dos veces
+  if (list.__profileTapBound) return;
+  list.__profileTapBound = true;
+
+  list.addEventListener(
+    "click",
+    (e) => {
+      const avatar = e.target.closest(".listados-avatar, .listados-avatarWrap");
+      if (!avatar) return;
+
+      const row = avatar.closest(".listados-row");
+      if (!row) return;
+
+      const adId = row.dataset.adId || "";
+      if (!adId) return;
+
+      // 1) Cerrar Listados
+      const overlay = document.getElementById("listadosOverlay");
+      if (overlay) {
+        overlay.classList.remove("is-open");
+        overlay.setAttribute("aria-hidden", "true");
+        overlay.hidden = true;
+        document.documentElement.classList.remove("no-scroll");
+        document.body.classList.remove("no-scroll");
+      }
+
+      // 2) En el siguiente frame, abrir directamente el panel de perfil (sin enfocar la carta)
+      requestAnimationFrame(() => {
+        const esc = (window.CSS && typeof CSS.escape === "function") ? CSS.escape(adId) : adId.replace(/"/g, '\"');
+        const card = document.querySelector(`.card[data-ad-id="${esc}"]`) || document.querySelector(`.swipe-card[data-ad-id="${esc}"]`);
+        if (!card) {
+          window.showToast?.("Ese perfil no está cargado ahora mismo.", 2500);
+          return;
+        }
+        if (typeof openPanelFromCard === "function") {
+          openPanelFromCard(card);
+        } else {
+          window.showToast?.("No está listo el panel de perfil.", 2500);
+        }
+      });
+},
+    true // capture=true
+  );
+}
+
+window.initListadosProfileTap = initListadosProfileTap;
+
 
 function getAdFromCard(card) {
   const id = card?.dataset?.adId || "";
@@ -1624,7 +1769,25 @@ function updateStack(){
   }
 }
 
+window.focusCardByAdId = function (adId) {
+  try {
+    if (!adId) return false;
 
+    // `cards` e `index` existen en tu app.js (son las del deck)
+    const i = cards.findIndex((c) => (c.dataset.adId || "") === adId);
+    if (i < 0) return false;
+
+    index = i;
+    updateStack();
+
+    // extra: asegurar que la card activa queda en viewport si tu contenedor scrollea
+    cards[index].scrollIntoView?.({ block: "center", behavior: "smooth" });
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+};
 
 		
   function setCardTransform(card, x, y) {
@@ -2812,6 +2975,9 @@ mediaViewer?.addEventListener("touchend", (e) => {
 mediaViewer?.addEventListener("click", (e) => {
   if (e.target && e.target.closest && e.target.closest("[data-close]")) closeMediaViewer();
 });
+
+  // Enable tapping the thumbnail to open profile panel
+  initListadosProfileTap();
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && mediaViewer && !mediaViewer.classList.contains("hidden")) {
     e.preventDefault();
@@ -3002,6 +3168,10 @@ function showWaitUI(seconds = 60) {
     }
   }, 1000);
 }
+  // ✅ Exponer para que funciones fuera del sheet (p.ej. startAgoraCall) puedan parar el timer
+  window.__vc_hideWaitUI = hideWaitUI;
+  window.__vc_showWaitUI = showWaitUI;
+
 	const localVideo = document.getElementById("localVideo");
 	const hangupBtn = document.getElementById("hangup");
 
@@ -3452,9 +3622,14 @@ primaryBtn.addEventListener("click", async () => {
       callRoot.setAttribute("aria-hidden", "false");
     }
 
-    setState("calling");
-    document.body.classList.add("call-active");
-    showWaitUI(60);
+      setState("calling");
+      document.body.classList.add("call-active");
+
+      // NUEVO: guardar max_duration para usarlo cuando entre la invitada
+      __callMaxDuration = Number(data.max_duration || 0);
+
+      showWaitUI(60);
+
 
   } catch (err) {
     console.error(err);
@@ -3578,6 +3753,45 @@ let __agoraLeaveSent = false;
 let __agoraRemoteAudioTrack = null;
 let __agoraSpeakerMuted = false;
 
+// =======================
+// NUEVO: Call duration timer (empieza cuando entra la invitada)
+// =======================
+let __callDurationInterval = null;
+let __callSecondsLeft = 0;
+let __callStarted = false;
+let __callMaxDuration = 0;
+
+function stopCallDurationTimer() {
+  __callStarted = false;
+  if (__callDurationInterval) {
+    clearInterval(__callDurationInterval);
+    __callDurationInterval = null;
+  }
+}
+
+async function hangupByTimeup() {
+  try { await stopAgoraCall("timeup"); } catch (e) {}
+  try { exitCallAndReturnHome(); } catch (e) {}
+}
+
+// Si no quieres UI nueva, esto solo cuelga a 0.
+// (Luego, si quieres, lo conectamos a un contador visible mm:ss)
+function startCallDurationTimer(seconds) {
+  stopCallDurationTimer();
+  __callStarted = true;
+  __callSecondsLeft = Math.max(0, Math.floor(Number(seconds) || 0));
+
+  if (__callSecondsLeft <= 0) return;
+
+  __callDurationInterval = setInterval(() => {
+    __callSecondsLeft -= 1;
+
+    if (__callSecondsLeft <= 0) {
+      stopCallDurationTimer();
+      hangupByTimeup();
+    }
+  }, 1000);
+}
 
 // --- FIX real: evitar que se rompa JS + forzar repaint en Chrome Android ---
 function hardRepaintEl(el) {
@@ -3738,7 +3952,25 @@ async function startAgoraCall(params) {
     // ✅ CAMBIO: H264 (mejor compatibilidad/calidad en iOS)
     __agoraClient = window.AgoraRTC.createClient({ mode: "rtc", codec: "h264" });
 
+    // ✅ NUEVO (mínimo): cuando entra la invitada, arrancas tu contador (sin tocar vídeo)
+    __agoraClient.on("user-joined", () => {
+      try {
+        // ✅ Parar el timer de espera (showWaitUI(60)) aunque hideWaitUI no esté en este scope
+        if (typeof window !== "undefined" && typeof window.__vc_hideWaitUI === "function") {
+          window.__vc_hideWaitUI();
+        }
+
+        // ✅ Arrancar temporizador real solo una vez
+        if (!__callStarted && __callMaxDuration > 0) {
+          startCallDurationTimer(__callMaxDuration);
+        }
+      } catch (e) {}
+    });
+
     __agoraClient.on("user-published", async (user, mediaType) => {
+      // ✅ parar espera 60s en cuanto el remoto publica
+      try { window.__vc_hideWaitUI?.(); } catch {}
+
       await __agoraClient.subscribe(user, mediaType);
 
       if (mediaType === "video" && user.videoTrack) {
@@ -3871,6 +4103,9 @@ async function startAgoraCall(params) {
  
 
 async function stopAgoraCall(reason = "manual") {
+  // ✅ NUEVO: parar temporizador de duración
+  try { stopCallDurationTimer(); } catch (e) {}
+
   try {
     // Enviar LEAVE solo una vez
     if (__agoraSession && !__agoraLeaveSent) {
@@ -4610,6 +4845,7 @@ async function onSendCode() {
         document.body.classList.add("no-scroll");
 
         window.initListadosSwipe?.();
+        window.initListadosProfileTap?.();
 
         // ✅ NUEVO: enganchar carga real
         window.bindListadosInfiniteScroll?.();
@@ -4686,21 +4922,21 @@ async function onSendCode() {
   on("hdrPhoneBtnLogged", () => window.reloadAdsWithService?.("webs"));
   on("hdrVideoBtnLogged", () => window.reloadAdsWithService?.("videocalls"));
 
-  // --- Listados / Fichas / Perfil: misma lógica que antes en el menú ---
-  on("hdrListadosBtn", () => {
-    const overlay = document.getElementById("listadosOverlay");
-    if (!overlay) return;
+on("hdrListadosBtn", () => {
+  const overlay = document.getElementById("listadosOverlay");
+  if (!overlay) return;
 
-    overlay.hidden = false;
-    overlay.setAttribute("aria-hidden", "false");
-    requestAnimationFrame(() => overlay.classList.add("is-open"));
-    document.documentElement.classList.add("no-scroll");
-    document.body.classList.add("no-scroll");
+  overlay.hidden = false;
+  overlay.setAttribute("aria-hidden", "false");
+  requestAnimationFrame(() => overlay.classList.add("is-open"));
+  document.documentElement.classList.add("no-scroll");
+  document.body.classList.add("no-scroll");
 
-    window.initListadosSwipe?.();
-    window.bindListadosInfiniteScroll?.();
-    window.loadListados?.({ reset: true });
-  });
+  window.initListadosSwipe?.();
+  window.initListadosProfileTap?.();   // ✅ AQUÍ ES CORRECTO
+  window.bindListadosInfiniteScroll?.();
+  window.loadListados?.({ reset: true });
+});
 
   on("hdrFichasBtn", () => {
     // usa tu función existente
@@ -5413,6 +5649,11 @@ function goToStore() {
   let exhausted = false;
   let scrollBound = false;
 
+  // Mapa de registros (call) por id, para poder abrir el modal desde el swipe action
+  const callById = new Map();
+  try { window.__listadosCallById = callById; } catch {}
+
+
   function $(id){ return document.getElementById(id); }
 
   function getUserId(){
@@ -5488,37 +5729,71 @@ function safeImg(url){
   function createRowEl(call){
     const row = document.createElement("div");
     row.className = "listados-row";
-    row.dataset.rowId = call?.objectId || "";
+    const __cid = String(call?.objectId || call?.id || call?.call_id || call?.callId || "").trim();
+    row.dataset.rowId = __cid;
     row.dataset.kind = call?.call_type || "call";
+    row.dataset.adId = call?.advertisement?.objectId || "";
+    row.dataset.connected = call?.advertisement?.connected ? "true" : "false";
+
+// Link row to advertisement id so tapping thumbnail can open Profile panel
+try {
+  const __ad = call?.advertisement || null;
+  const __adId = String(__ad?.objectId || __ad?.id || __ad?.advertisement_id || "").trim();
+  if (__adId) {
+    row.dataset.adId = __adId;
+    // normalize objectId for downstream functions
+    if (__ad && !__ad.objectId) __ad.objectId = __adId;
+    // store in global adMap if available
+    try { adMap?.set?.(__adId, __ad); } catch {}
+  }
+} catch {}
 
     const photo = safeImg(call?.advertisement?.url_principal_photo);
-    const label = typeLabel(call?.call_type);
     const dateTxt = (call?.date || "").trim();
     const dur = (call?.duration || "").trim();
     const coins = (call?.coins ?? "").toString().trim();
 
+    const isOnline = !!call?.advertisement?.connected;
+
     row.innerHTML = `
-      <div class="listados-row__bg" aria-hidden="true">
-        <button class="listados-row__delete" type="button" aria-label="Eliminar">
+      <div class="listados-row__bg">
+        <button
+          class="listados-row__action is-delete"
+          type="button"
+          aria-label="Eliminar"
+        >
           <span class="listados-row__bg-label">Eliminar</span>
-          <span class="listados-row__bg-ico" aria-hidden="true">
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path fill="currentColor" d="M9 3h6l1 2h5v2H3V5h5l1-2zm1 6h2v10h-2V9zm4 0h2v10h-2V9z"/>
-            </svg>
-          </span>
         </button>
       </div>
 
       <div class="listados-row__fg">
         <div class="listados-item">
-          <img class="listados-avatar" src="${photo}" alt="Avatar" loading="lazy">
+
+          <div class="listados-avatarWrap">
+            <img class="listados-avatar" src="${photo}" alt="Avatar" loading="lazy">
+            <span class="listados-status ${isOnline ? 'is-online' : 'is-offline'}"></span>
+          </div>
+
           <div class="listados-meta">
-            <div class="listados-type">${label}</div>
+            <div class="listados-type">
+              <div class="listados-typeRow">
+                <img
+                  class="listados-callIcon"
+                  src="${call.call_type === 'call' ? 'img/llamada.svg' : 'img/videollamada.svg'}"
+                  alt=""
+                  loading="lazy"
+                >
+                <span class="listados-nameAge">${call?.advertisement?.name || ""} ${call?.advertisement?.age || ""}</span>
+              </div>
+            </div>
+
             <div class="listados-sub">${dateTxt} · ${dur}</div>
           </div>
+
           <div class="listados-right">
             <span class="listados-badge">${coins} Fichas</span>
           </div>
+
         </div>
       </div>
     `;
@@ -5564,6 +5839,12 @@ async function fetchPage(p){
     // agrupamos por día “bonito”
     let lastSep = null;
     calls.forEach((c)=>{
+      // guardamos para acciones desde UI (swipe)
+      try {
+        const cid = String(c?.objectId || c?.id || c?.call_id || c?.callId || "").trim();
+        if (cid) callById.set(cid, c);
+      } catch {}
+
       const d = parseDateStr(c?.date);
       const sep = d ? formatDaySep(d) : "—";
 
@@ -5586,6 +5867,7 @@ async function fetchPage(p){
       exhausted = false;
       list.innerHTML = "";
       showEmpty(false);
+      try { callById.clear(); } catch {}
     }
 
     loading = true;
