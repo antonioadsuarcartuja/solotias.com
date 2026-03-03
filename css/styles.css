@@ -1541,7 +1541,7 @@ body.auth-open{
   border: 1px solid rgba(0,0,0,.06);
   border-radius: 18px;
   padding: 14px 14px;
-  max-height: 62vh;
+  max-height: 84vh;
   overflow: auto;
 }
 /* =========================
@@ -2743,13 +2743,16 @@ body{
 @media (min-width: 1024px){
 
   /* Fondo desktop */
+@media (min-width: 1024px){
   body{
-    background:
-      radial-gradient(circle at 20% 20%, rgba(194,24,91,.12), transparent 40%),
-      radial-gradient(circle at 80% 80%, rgba(255,45,134,.10), transparent 40%),
-      linear-gradient(135deg,#fafafa,#f3f3f5);
-    padding-bottom: 0 !important; /* el bottom-nav ya no empuja el body en desktop */
+    background-image: url("/img/fondo01.png");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed; /* opcional: “parallax” suave en desktop */
+    padding-bottom: 0 !important;
   }
+}
 
   /* Layout general */
   .desktop-layout{
@@ -3040,7 +3043,7 @@ body{
   .desktop-hero__content{
     background: rgba(255,255,255,.85);
     backdrop-filter: blur(20px);
-    padding: 50px;
+    padding: 3px 33px 19px; 
     border-radius: 32px;
     box-shadow: 0 30px 80px rgba(0,0,0,.15);
   }
@@ -3421,3 +3424,104 @@ a.name-text.seo-profile-link:hover{
 
 /* Listados: avatar is tappable (opens profile) */
 .listados-avatarWrap, .listados-avatar { cursor: default; }
+
+/* =========================
+   DESKTOP FOOTER (solo escritorio)
+========================= */
+.desktop-footer{
+  display:none;
+}
+
+@media (min-width: 1024px){
+
+  /* Deja espacio para que el footer fijo no tape el contenido */
+  .desktop-layout{
+    padding-bottom: calc(60px + 64px);
+  }
+
+  .desktop-footer{
+    display:block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 2000;
+
+    background: rgba(255,255,255,.92);
+    border-top: 1px solid rgba(0,0,0,.08);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .desktop-footer__inner{
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 14px 24px;
+
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .desktop-footer__copy{
+    font-size: 13px;
+    color: rgba(11,11,12,.72);
+    font-weight: 700;
+    letter-spacing: .1px;
+    white-space: nowrap;
+  }
+
+  .desktop-footer__links{
+    display:flex;
+    align-items:center;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .desktop-footer__link{
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+
+    font-size: 13px;
+    color: rgba(11,11,12,.72);
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .desktop-footer__link:hover{
+    color: rgba(11,11,12,.92);
+  }
+}
+@media (min-width: 1024px){
+  .desktop-hero__badge--pwa{
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .desktop-hero__badgeIcon{
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    flex: 0 0 auto;
+  }
+}
+
+/* ===== FORZAR FOOTER SOLO EN ESCRITORIO ===== */
+
+/* Oculto por defecto (móvil incluido) */
+.desktop-footer{
+  display: none !important;
+}
+
+/* Solo visible en escritorio */
+@media (min-width: 1024px){
+  .desktop-footer{
+    display: block !important;
+  }
+}

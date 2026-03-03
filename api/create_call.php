@@ -40,6 +40,10 @@ if (is_array($body)) {
   $advertisement_id = trim((string)($body['advertisement_id'] ?? ''));
 }
 
+$user_llamametu_id = isset($_SESSION['user_llamametu_id'])
+  ? trim((string)$_SESSION['user_llamametu_id'])
+  : '';
+
 if ($advertisement_id === '') {
   http_response_code(400);
   echo json_encode(['error' => 'advertisement_id es obligatorio'], JSON_UNESCAPED_UNICODE);
@@ -78,7 +82,8 @@ $inviteUrl = 'https://solotias.com/?call=' . urlencode($callId);
 $cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_solotias_send_sms';
 
 $payload = json_encode([
-  'advertisement_id' => $advertisement_id,
+  'user_llamametu_id' => $user_llamametu_id,
+  'advertisement_destination_id' => $advertisement_id,
   'message'          => 'Tienes una videollamada: ' . $inviteUrl,
   'channel'          => $channel,
   'caller_uid'       => $callerUid

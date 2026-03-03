@@ -1442,19 +1442,60 @@ function initListadosProfileTap() {
       }
 
       // 2) En el siguiente frame, abrir directamente el panel de perfil (sin enfocar la carta)
-      requestAnimationFrame(() => {
-        const esc = (window.CSS && typeof CSS.escape === "function") ? CSS.escape(adId) : adId.replace(/"/g, '\"');
-        const card = document.querySelector(`.card[data-ad-id="${esc}"]`) || document.querySelector(`.swipe-card[data-ad-id="${esc}"]`);
-        if (!card) {
-          window.showToast?.("Ese perfil no está cargado ahora mismo.", 2500);
-          return;
-        }
-        if (typeof openPanelFromCard === "function") {
-          openPanelFromCard(card);
-        } else {
-          window.showToast?.("No está listo el panel de perfil.", 2500);
-        }
-      });
+// 2) En el siguiente frame, abrir directamente el panel de perfil (sin enfocar la carta)
+requestAnimationFrame(() => {
+  const esc = (window.CSS && typeof CSS.escape === "function")
+    ? CSS.escape(adId)
+    : adId.replace(/"/g, '\\"');
+
+  const card =
+    document.querySelector(`.card[data-ad-id="${esc}"]`) ||
+    document.querySelector(`.swipe-card[data-ad-id="${esc}"]`);
+
+  // ✅ Caso 1: el perfil está cargado en el deck → comportamiento actual
+  if (card) {
+    if (typeof openPanelFromCard === "function") {
+      openPanelFromCard(card);
+    } else {
+      window.showToast?.("No está listo el panel de perfil.", 2500);
+    }
+    return;
+  }
+
+  // ✅ Caso 2: NO hay card → abrir desde advertisement_data (nuevo API)
+  try {
+    // row debe existir en el scope donde estás (en tu handler actual existe)
+    const callId = row?.dataset?.rowId || "";
+    const map = window.__listadosCallById; // lo creas en initListadosCallsModule
+    const call = map?.get?.(callId) || null;
+
+    const adFull = call?.advertisement_data || null;
+    const adLite = call?.advertisement || null;
+
+    if (!adFull) {
+      window.showToast?.("Ese perfil no está cargado ahora mismo.", 2500);
+      return;
+    }
+
+    // Merge: garantizamos foto principal y estado conectado si viene en advertisement
+    const mergedAd = {
+      ...adFull,
+      objectId: adFull.objectId || adLite?.objectId || adId,
+      url_principal_photo:
+        adLite?.url_principal_photo || adFull?.url_principal_photo || "",
+      connected: !!adLite?.connected
+    };
+
+    if (typeof openPanelFromAdData === "function") {
+      openPanelFromAdData(mergedAd);
+    } else {
+      // si aún no pegaste la función nueva
+      window.showToast?.("No está listo el panel de perfil.", 2500);
+    }
+  } catch (e) {
+    window.showToast?.("No se pudo abrir el perfil.", 2500);
+  }
+});
 },
     true // capture=true
   );
@@ -1594,6 +1635,44 @@ if (ctaTitle) {
 }
 }
 
+function openPanelFromAdData(ad) {
+  if (!panel || !panelHero || !panelSheet) return;
+  if (!ad) return;
+
+  // Abrimos panel inmediato (sin animación shared-element)
+  panel.hidden = false;
+  panel.removeAttribute("hidden");
+  panel.classList.remove("hidden");
+  panel.style.setProperty("--panelBackAlpha", "1");
+  panel.style.visibility = "";
+  panel.classList.add("open");
+
+  // HERO: usamos imagen principal si existe
+  const src =
+    ad?.url_principal_photo ||
+    getPrincipalPhoto(ad)?.photo_url ||
+    getPrincipalPhoto(ad)?.thumbnail_url ||
+    DEFAULT_AVATAR_PLACEHOLDER;
+
+  const fade = `linear-gradient(to bottom,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,0.35) 55%,
+    rgba(255,255,255,0.85) 80%,
+    rgba(255,255,255,1) 100%)`;
+
+  panelHero.innerHTML = "";
+  panelHero.style.backgroundImage = `${fade}, url("${src}")`;
+  panelHero.style.backgroundSize = `100% 100%, cover`;
+  panelHero.style.backgroundPosition = `0 0, center`;
+  panelHero.style.backgroundRepeat = `no-repeat, no-repeat`;
+  panelHero.style.visibility = "visible";
+  panelHero.style.opacity = "1";
+
+  try { populateProfilePanel(ad); } catch {}
+
+  // URL bonita (SEO) si quieres conservarlo también aquí
+  try { pushProfileState?.(ad); } catch {}
+}
 
 async function initDynamicAds() {
   try {
@@ -3056,7 +3135,8 @@ function configureCallModal(mode) {
   if (footTextSpan) {
     // Deja tu texto de video como estaba (si quieres el original exacto, lo pones aquí)
     footTextSpan.innerHTML =
-      "Si no contesta en <b>20s</b>, la llamada se cancelará automáticamente.";
+      "Al iniciar la videollamada entrarás en una sala privada. El coste es de 10 créditos por minuto, que se descontarán únicamente desde el momento en que ambos estéis conectados.";
+  
   }
 }
 
@@ -5332,13 +5412,13 @@ window.refreshSessionUI = function refreshSessionUI(){
       if (loadingCoins) {
         vcCoinsBtn.innerHTML = `
           <span class="coins-loading">
-            <span>Dispones de coins</span>
+            <span>Dispones de</span>
             <span class="coins-spinner" aria-hidden="true"></span>
             <span>· comprar más créditos</span>
           </span>
         `;
       } else {
-        vcCoinsBtn.textContent = `Dispones de coins: ${hasCoins ? coins : "—"} · comprar más créditos`;
+        vcCoinsBtn.textContent = `Dispones de: ${hasCoins ? coins : "—"} · comprar más créditos`;
       }
     } else {
       vcMsgBtn.hidden = false;
@@ -5791,7 +5871,7 @@ try {
           </div>
 
           <div class="listados-right">
-            <span class="listados-badge">${coins} Créditos</span>
+            <span class="listados-badge">${coins} Fichas</span>
           </div>
 
         </div>
