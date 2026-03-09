@@ -61,12 +61,8 @@ function parse_request(string $path, string $bodyJson): array {
 // --- MAIN ---
 $in = parse_post_json();
 
-// Añadimos http_host en servidor para que sea fiable
-$in["http_host"] = $_SERVER["HTTP_HOST"] ?? "";
-
-// OJO: la IP NO hace falta enviarla; en Cloud tienes request.ip.
-// Pero si Cloud quiere "Ip" en params, se lo pasamos también:
-$in["Ip"] = $_SERVER["REMOTE_ADDR"] ?? "";
+// http_host exigido por la Cloud Function (web origen)
+$in["http_host"] = "solotias.com";
 
 // Llamada a Cloud Function
 [$st, $json, $raw] = parse_request("/functions/api_purchase_request", json_encode($in));

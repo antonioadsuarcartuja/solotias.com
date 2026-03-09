@@ -31,6 +31,7 @@ if (!hash_equals($EXPECTED_TOKEN, $token)) {
 
 $call_id = trim((string)($_POST['call_id'] ?? $body['call_id'] ?? ''));
 $timespent = (int)($_POST['timespent'] ?? $body['timespent'] ?? 0);
+$record_file = trim((string)($_POST['record_file'] ?? $body['record_file'] ?? ''));
 
 if ($call_id === '') {
   http_response_code(400);
@@ -49,6 +50,7 @@ $cloudUrl = rtrim((string)PARSE_SERVER_URL, '/') . '/api_solotias_call_end';
 $payload = json_encode([
   'call_id' => $call_id,
   'timespent' => $timespent,
+  'record_file' => $record_file,
 ], JSON_UNESCAPED_UNICODE);
 
 $ch = curl_init($cloudUrl);

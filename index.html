@@ -709,6 +709,34 @@
 		</section>
 		</div>
 
+		<!-- Permissions required (Camera/Mic) -->
+		<div aria-hidden="true" class="perm-overlay" hidden id="permOverlay">
+			<section aria-labelledby="permTitle" aria-modal="true" class="perm-sheet" role="dialog">
+				<header class="perm-header">
+					<h2 class="perm-title" id="permTitle">Permisos necesarios</h2>
+					<button aria-label="Cerrar" class="perm-close" id="permCloseBtn" type="button">
+						<svg aria-hidden="true" height="20" viewBox="0 0 24 24" width="20">
+							<path d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3 1.4 1.4z" fill="currentColor"></path>
+						</svg>
+					</button>
+				</header>
+
+				<div class="perm-body">
+					<div class="perm-lead">
+						<b>Para poder hacer una videollamada debes permitir micrófono y cámara.</b>
+					</div>
+					<div class="perm-sub" id="permPlatformHint"></div>
+					<ol class="perm-steps" id="permSteps"></ol>
+					<div class="perm-note" id="permNote"></div>
+				</div>
+
+				<div class="perm-actions">
+					<button class="perm-primary" id="permRetryBtn" type="button">Reintentar</button>
+					<button class="perm-secondary" id="permDismissBtn" type="button">Ahora no</button>
+				</div>
+			</section>
+		</div>
+
 		<!-- Políticas y Términos (fullscreen modal) -->
 		<div aria-hidden="true" class="auth-overlay" hidden id="policiesOverlay">
 			<section aria-labelledby="policiesTitle" aria-modal="true" class="auth-sheet" role="dialog">

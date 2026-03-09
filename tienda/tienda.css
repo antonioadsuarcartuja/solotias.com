@@ -154,6 +154,15 @@ body{
   color: var(--text-main);
 }
 
+.shop-card-coins{
+  font-size: 35px; /* x2 de 17.5px */
+  line-height: 1;
+  font-weight: 900;
+  color: var(--text-main);
+  display: block;
+  margin-bottom: 2px;
+}
+
 .shop-card-price{
   font-size: 16px;
   line-height: 1.05;
@@ -302,7 +311,11 @@ body{
 .pay-btn{
   width:100%;
   margin-top: 12px;
+  min-height: 56px;
+  padding-top: 16px;
+  padding-bottom: 16px;
 }
+
 
 /* =========================
    Skeleton
@@ -354,6 +367,7 @@ body{
   gap: 12px;
   align-items:flex-start;
   margin-bottom: 14px;
+  margin-top: 14px;
   flex-wrap: wrap;
 }
 

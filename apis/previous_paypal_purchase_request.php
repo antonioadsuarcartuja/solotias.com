@@ -59,24 +59,25 @@ function call_cloud_function(string $fn, array $payload): array {
 
 $in = read_json_body();
 
-$user_phone = isset($in["user_phone"]) ? trim((string)$in["user_phone"]) : "";
+$user_llamametu_id = isset($in["user_llamametu_id"]) ? trim((string)$in["user_llamametu_id"]) : "";
 $coin_price_id = isset($in["coin_price_id"]) ? trim((string)$in["coin_price_id"]) : "";
 
-if ($user_phone === "" || $coin_price_id === "") {
+if ($user_llamametu_id === "" || $coin_price_id === "") {
   http_response_code(400);
-  echo json_encode(["ok" => false, "error" => "Missing user_phone or coin_price_id"], JSON_UNESCAPED_UNICODE);
+  echo json_encode(["ok" => false, "error" => "Missing user_llamametu_id or coin_price_id"], JSON_UNESCAPED_UNICODE);
   exit;
 }
 
-// (Opcional) host/ip para logging en cloud si lo necesitas
-$in["http_host"] = $_SERVER["HTTP_HOST"] ?? "";
-$in["Ip"] = $_SERVER["REMOTE_ADDR"] ?? "";
+// Params exigidos por la Cloud Function
+$http_host = "solotias.com";
+$ip = isset($in["ip"]) ? trim((string)$in["ip"]) : "";
+if ($ip === "") $ip = $_SERVER["REMOTE_ADDR"] ?? "";
 
 [$st, $json, $raw] = call_cloud_function("api_previous_paypal_purchase_request", [
-  "user_phone" => $user_phone,
+  "user_llamametu_id" => $user_llamametu_id,
   "coin_price_id" => $coin_price_id,
-  "http_host" => $in["http_host"],
-  "Ip" => $in["Ip"],
+  "ip" => $ip,
+  "http_host" => $http_host,
 ]);
 
 http_response_code($st > 0 ? $st : 502);

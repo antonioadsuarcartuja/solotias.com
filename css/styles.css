@@ -921,6 +921,79 @@ body.viewer-open{ overflow: hidden; }
 }
 .vc-overlay.is-open .vc-sheet{ transform: translateY(0); }
 
+/* =========================
+   Permissions modal (Camera/Mic)
+   ========================= */
+.perm-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s ease;
+}
+.perm-overlay.is-open{
+  opacity: 1;
+  pointer-events: auto;
+}
+.perm-sheet{
+  width: min(560px, 100%);
+  border-radius: 26px;
+  background: rgba(255,255,255,.94);
+  border: 1px solid rgba(0,0,0,.08);
+  box-shadow: 0 20px 60px rgba(0,0,0,.22);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  padding: 14px 16px 16px;
+}
+.perm-header{ display:flex; align-items:center; justify-content: space-between; padding: 2px 2px 10px; }
+.perm-title{ margin:0; font: 800 18px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; color:#0b0f14; letter-spacing: -.02em; }
+.perm-close{
+  width: 42px; height: 42px; border-radius: 999px;
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.75);
+  display:grid; place-items:center;
+  cursor:pointer;
+  transition: transform .12s ease, background .12s ease;
+}
+.perm-close:active{ transform: scale(.96); background: rgba(255,255,255,.9); }
+.perm-body{ display:grid; gap: 10px; padding: 2px 6px 10px; }
+.perm-lead{ font: 700 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; color:#0b0f14; }
+.perm-sub{ font: 600 13px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; color: rgba(11,15,20,.75); }
+.perm-steps{ margin: 0; padding-left: 18px; display:grid; gap: 8px; }
+.perm-steps li{ font: 600 13px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; color: rgba(11,15,20,.86); }
+.perm-note{ font: 600 12px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif; color: rgba(11,15,20,.66); }
+.perm-actions{ display:flex; gap: 10px; padding: 10px 6px 2px; }
+.perm-primary{
+  flex: 1;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #0b0f14;
+  color: #fff;
+  font: 800 14px/1 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+  cursor: pointer;
+}
+.perm-primary:active{ transform: translateY(1px); }
+.perm-secondary{
+  flex: 1;
+  border-radius: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(0,0,0,.12);
+  background: rgba(255,255,255,.7);
+  color: #0b0f14;
+  font: 800 14px/1 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+  cursor: pointer;
+}
+.perm-secondary:active{ transform: translateY(1px); }
+
 .vc-header{
   display:flex;
   align-items:center;
@@ -2861,6 +2934,7 @@ body{
   .desktop-phone__screen .panel,
   .desktop-phone__screen .auth-overlay,
   .desktop-phone__screen .vc-overlay,
+  .desktop-phone__screen .perm-overlay,
   .desktop-phone__screen .menu-overlay,
   .desktop-phone__screen .media-viewer,
   .desktop-phone__screen #callRoot,

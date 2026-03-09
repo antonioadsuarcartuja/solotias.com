@@ -3160,11 +3160,129 @@ function configureCallModal(mode) {
 	const primaryBtn = document.getElementById("vcPrimaryBtn");
 	const primaryText = document.getElementById("vcPrimaryText");
 
+	// Permissions modal (Camera/Mic)
+	const permOverlay = document.getElementById("permOverlay");
+	const permCloseBtn = document.getElementById("permCloseBtn");
+	const permDismissBtn = document.getElementById("permDismissBtn");
+	const permRetryBtn = document.getElementById("permRetryBtn");
+	const permPlatformHint = document.getElementById("permPlatformHint");
+	const permSteps = document.getElementById("permSteps");
+	const permNote = document.getElementById("permNote");
+
 	const msgBtn = document.getElementById("vcMsgBtn");
 	const profileBtn = document.getElementById("vcProfileBtn");
 
 	const callRoot = document.getElementById("callRoot");
 	const remoteVideo = document.getElementById("remoteVideo");
+
+	function __detectMobileOS() {
+		const ua = String(navigator.userAgent || "").toLowerCase();
+		const isAndroid = ua.includes("android");
+		const isiOS = /iphone|ipad|ipod/.test(ua) || (ua.includes("mac") && "ontouchend" in document);
+		return { isAndroid, isiOS };
+	}
+
+	function __openPermModal(platform) {
+		if (!permOverlay) return;
+
+		// Reset content
+		if (permSteps) permSteps.innerHTML = "";
+		if (permNote) permNote.textContent = "";
+
+		const steps = [];
+
+		// Persist modal across navigation/screen changes (Android back to cards / URL cleanup)
+		try {
+			const key = "solotias_perm_modal_platform";
+			sessionStorage.setItem(key, String(platform || "android"));
+		} catch (e) {}
+		if (platform === "ios") {
+			if (permPlatformHint) permPlatformHint.textContent = "iPhone / iPad (Safari o Chrome)";
+			steps.push("Toca el icono de candado / ‘aA’ en la barra de direcciones.");
+			steps.push("En ‘Ajustes del sitio’ o ‘Configuración del sitio’, activa Cámara y Micrófono en ‘Permitir’." );
+			steps.push("Si sigue bloqueado: Ajustes del iPhone > Safari (o Chrome) > Cámara y Micrófono > Permitir.");
+			if (permNote) permNote.textContent = "Después vuelve aquí y pulsa ‘Reintentar’.";
+		} else {
+			// Default Android
+			if (permPlatformHint) permPlatformHint.textContent = "Android (Chrome)";
+			steps.push("En la barra de direcciones, toca el candado (o el icono de información)." );
+			steps.push("En ‘Permisos’, pon Cámara y Micrófono en ‘Permitir’." );
+			steps.push("Si aparece ‘Bloqueado’: Ajustes del teléfono > Apps > Chrome > Permisos > Cámara/Micrófono > Permitir." );
+			if (permNote) permNote.textContent = "Después vuelve aquí y pulsa ‘Reintentar’.";
+		}
+
+		if (permSteps) {
+			for (const s of steps) {
+				const li = document.createElement("li");
+				li.textContent = s;
+				permSteps.appendChild(li);
+			}
+		}
+
+		permOverlay.hidden = false;
+		permOverlay.classList.add("is-open");
+		permOverlay.setAttribute("aria-hidden", "false");
+	}
+
+	function __closePermModal() {
+		if (!permOverlay) return;
+		// Clear persisted flag
+		try { sessionStorage.removeItem("solotias_perm_modal_platform"); } catch (e) {}
+		permOverlay.classList.remove("is-open");
+		permOverlay.setAttribute("aria-hidden", "true");
+		// Delay hide to allow fade-out
+		setTimeout(() => {
+			if (!permOverlay.classList.contains("is-open")) permOverlay.hidden = true;
+		}, 180);
+	}
+
+	async function __ensureCameraMicPermissions() {
+		// Single permission request (camera + mic). If denied, we stop the call creation (no SMS).
+		if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return false;
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+			// Immediately release devices (Agora will capture again when joining)
+			try {
+				stream.getTracks().forEach(t => t.stop());
+			} catch (e) {}
+			// Permissions granted: ensure any pending modal flag is cleared
+			try { sessionStorage.removeItem("solotias_perm_modal_platform"); } catch (e) {}
+			return true;
+		} catch (err) {
+			return false;
+		}
+	}
+
+	// Wire permissions modal events (safe if elements missing)
+	permCloseBtn?.addEventListener("click", __closePermModal);
+	permDismissBtn?.addEventListener("click", __closePermModal);
+	permOverlay?.addEventListener("click", (e) => { if (e.target === permOverlay) __closePermModal(); });
+	permRetryBtn?.addEventListener("click", async () => {
+		__closePermModal();
+		// Re-trigger the same user action
+		setTimeout(() => {
+			try { primaryBtn?.click?.(); } catch (e) {}
+		}, 60);
+	});
+	document.addEventListener("keydown", (e) => {
+		if (!permOverlay || permOverlay.hidden) return;
+		if (e.key === "Escape") {
+			e.preventDefault();
+			__closePermModal();
+		}
+	});
+
+	// Re-open permissions modal if we navigated back to cards / URL was cleaned after denial
+	function __maybeReopenPermModal() {
+		let platform = null;
+		try { platform = sessionStorage.getItem("solotias_perm_modal_platform"); } catch (e) {}
+		if (!platform) return;
+		// Only reopen if it's currently closed/hidden
+		if (permOverlay && permOverlay.hidden) __openPermModal(platform);
+	}
+	window.addEventListener("pageshow", __maybeReopenPermModal);
+	// In case script runs before pageshow in some webviews
+	setTimeout(__maybeReopenPermModal, 50);
   // =========================
 // WAIT UI (60s) sobre el remoto
 // =========================
@@ -3251,6 +3369,20 @@ function showWaitUI(seconds = 60) {
   // ✅ Exponer para que funciones fuera del sheet (p.ej. startAgoraCall) puedan parar el timer
   window.__vc_hideWaitUI = hideWaitUI;
   window.__vc_showWaitUI = showWaitUI;
+
+  // ✅ Exponer modal de permisos para poder reutilizarlo desde startAgoraCall (invitada)
+  window.__vc_openPermModal = function __vc_openPermModal_exposed() {
+    try {
+      const { isAndroid, isiOS } = __detectMobileOS();
+      __openPermModal(isiOS ? "ios" : "android");
+    } catch (e) {
+      // fallback: intentar abrir como android
+      try { __openPermModal("android"); } catch (_) {}
+    }
+  };
+  window.__vc_closePermModal = function __vc_closePermModal_exposed() {
+    try { __closePermModal(); } catch (e) {}
+  };
 
 	const localVideo = document.getElementById("localVideo");
 	const hangupBtn = document.getElementById("hangup");
@@ -3664,6 +3796,16 @@ primaryBtn.addEventListener("click", async () => {
   // 🔵 MODO VIDEO (Agora) — NO CAMBIAR COMPORTAMIENTO
   // ==========================
   try {
+		// ✅ Antes de crear la llamada (SMS/aviso): exigir permisos de cámara+micro.
+		// Si el usuario no los concede, NO se envía SMS ni se lanza la llamada de aviso.
+		const hasPerms = await __ensureCameraMicPermissions();
+		if (!hasPerms) {
+			const { isAndroid, isiOS } = __detectMobileOS();
+			__openPermModal(isiOS ? "ios" : "android");
+			setState("online");
+			return;
+		}
+
     // 👇 Overlay de video (el existente)
     showConnectOverlay(
       "Creando tu sala privada…",
@@ -4121,20 +4263,47 @@ async function startAgoraCall(params) {
     await __agoraClient.join(appId, channel, token, uid);
     __agoraJoined = true;
 
-    __agoraLocalAudioTrack = await window.AgoraRTC.createMicrophoneAudioTrack();
+    // ✅ IMPORTANTE: pedir audio+video juntos (1 solo prompt) y capturar denegación
+    try {
+      const tracks = await window.AgoraRTC.createMicrophoneAndCameraTracks(
+        {},
+        {
+          encoderConfig: {
+            width: 1920,
+            height: 1080,
+            frameRate: 30,
+            bitrateMin: 2500,
+            bitrateMax: 4500,
+          },
+        }
+      );
+      __agoraLocalAudioTrack = tracks?.[0] || null;
+      __agoraLocalVideoTrack = tracks?.[1] || null;
+    } catch (err) {
+      const name = String(err?.name || "");
+      const msg = String(err?.message || "");
+      const isPerm = /NotAllowedError|PermissionDeniedError|NotFoundError|NotReadableError/i.test(name) ||
+                     /permission|denied|notallowed/i.test(msg);
 
-    // ✅ CAMBIO: 1080p real (Full HD) + bitrate estable
-    __agoraLocalVideoTrack = await window.AgoraRTC.createCameraVideoTrack({
-      encoderConfig: {
-        width: 1920,
-        height: 1080,
-        frameRate: 30,
-        bitrateMin: 2500,
-        bitrateMax: 4500,
-      },
-    });
+      // Si la invitada no acepta permisos => mostrar popup + colgar para evitar pantalla negra
+      if (isPerm) {
+        try { window.__vc_openPermModal?.(); } catch (e) {}
+        try { await stopAgoraCall("permissions_denied"); } catch (e) {}
+        try { if (typeof exitCallAndReturnHome === "function") exitCallAndReturnHome(); } catch (e) {}
+        return false;
+      }
 
-    await __agoraClient.publish([__agoraLocalAudioTrack, __agoraLocalVideoTrack]);
+      throw err;
+    }
+
+    if (__agoraLocalAudioTrack && __agoraLocalVideoTrack) {
+      await __agoraClient.publish([__agoraLocalAudioTrack, __agoraLocalVideoTrack]);
+    } else {
+      // Fallback de seguridad: si por cualquier motivo faltan tracks, colgar limpiamente
+      try { await stopAgoraCall("missing_tracks"); } catch (e) {}
+      try { if (typeof exitCallAndReturnHome === "function") exitCallAndReturnHome(); } catch (e) {}
+      return false;
+    }
 
     // (Opcional) Debug: confirmar resolución enviada
     try {
